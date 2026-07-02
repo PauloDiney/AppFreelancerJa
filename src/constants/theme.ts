@@ -7,20 +7,29 @@ import '@/global.css';
 
 import { Platform } from 'react-native';
 
+// Paleta da marca "Estou Dentro": azul, branco, bege (neutras) + amarelo/vermelho/verde (status).
 export const Colors = {
   light: {
-    text: '#000000',
-    background: '#ffffff',
-    backgroundElement: '#F0F0F3',
-    backgroundSelected: '#E0E1E6',
-    textSecondary: '#60646C',
+    text: '#1A2233',
+    background: '#FFFFFF',
+    backgroundElement: '#F5EFE4', // bege
+    backgroundSelected: '#E8DFC9',
+    textSecondary: '#5B6472',
+    primary: '#1E5FCC', // azul
+    statusPending: '#F5A623', // amarelo
+    statusDanger: '#E53935', // vermelho
+    statusSuccess: '#2E9E5B', // verde
   },
   dark: {
-    text: '#ffffff',
-    background: '#000000',
-    backgroundElement: '#212225',
-    backgroundSelected: '#2E3135',
-    textSecondary: '#B0B4BA',
+    text: '#F5F1E8',
+    background: '#0F172A', // azul bem escuro
+    backgroundElement: '#1C2536',
+    backgroundSelected: '#28344A',
+    textSecondary: '#A9B0BD',
+    primary: '#4C8DFF',
+    statusPending: '#FBBF24',
+    statusDanger: '#F87171',
+    statusSuccess: '#4ADE80',
   },
 } as const;
 
