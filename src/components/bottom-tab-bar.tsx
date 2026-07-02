@@ -7,7 +7,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { ThemedText } from '@/components/themed-text';
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
-import { supabase } from '@/services/supabaseClient';
+import { useUsuarioLogado } from '@/hooks/use-usuario-logado';
 import { contarNaoLidas } from '@/utils/chat';
 
 export type TabKey = 'inicio' | 'buscar' | 'chat' | 'perfil';
@@ -23,13 +23,7 @@ export function BottomTabBar({ ativo }: { ativo: TabKey }) {
   const theme = useTheme();
   const router = useRouter();
 
-  const usuarioQuery = useQuery({
-    queryKey: ['usuario-logado'],
-    queryFn: async () => {
-      const { data } = await supabase.auth.getUser();
-      return data.user;
-    },
-  });
+  const usuarioQuery = useUsuarioLogado();
   const usuarioId = usuarioQuery.data?.id;
 
   const naoLidasQuery = useQuery({

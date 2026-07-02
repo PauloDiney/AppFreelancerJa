@@ -11,9 +11,11 @@ import { ThemedView } from '@/components/themed-view';
 import { Spacing } from '@/constants/theme';
 import { useEstatisticasPerfil } from '@/hooks/use-estatisticas-perfil';
 import { useTheme } from '@/hooks/use-theme';
+import { useUsuarioLogado } from '@/hooks/use-usuario-logado';
 import { supabase } from '@/services/supabaseClient';
 import { AVATAR_PALETTE, formatarDataCurta, formatarGanhos, formatarMesAno, formatarQuando, formatarValor, iniciais } from '@/utils/bico';
 import { abrirConversa } from '@/utils/chat';
+import { mensagemErro } from '@/utils/erros';
 
 type StatusHistorico = 'em_andamento' | 'concluido' | 'cancelado';
 type Filtro = 'todos' | 'em_andamento' | 'concluido';
@@ -42,13 +44,7 @@ export default function HistoricoBicosScreen() {
   const [filtro, setFiltro] = useState<Filtro>('todos');
   const [abrindoConversa, setAbrindoConversa] = useState(false);
 
-  const usuarioQuery = useQuery({
-    queryKey: ['usuario-logado'],
-    queryFn: async () => {
-      const { data } = await supabase.auth.getUser();
-      return data.user;
-    },
-  });
+  const usuarioQuery = useUsuarioLogado();
   const usuarioId = usuarioQuery.data?.id;
 
   const estatisticas = useEstatisticasPerfil(usuarioId);
@@ -112,7 +108,7 @@ export default function HistoricoBicosScreen() {
       const conversaId = await abrirConversa(bicoId, usuarioId, contratanteId);
       router.push({ pathname: '/chat/[id]', params: { id: conversaId } });
     } catch (erro) {
-      Alert.alert('Não foi possível abrir a conversa', erro instanceof Error ? erro.message : 'Tente novamente.');
+      Alert.alert('Não foi possível abrir a conversa', mensagemErro(erro as Error, 'abrir a conversa'));
     } finally {
       setAbrindoConversa(false);
     }

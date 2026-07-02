@@ -12,9 +12,11 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
+import { useUsuarioLogado } from '@/hooks/use-usuario-logado';
 import { supabase } from '@/services/supabaseClient';
 import { AVATAR_PALETTE, iniciais } from '@/utils/bico';
 import { formatarDataLista } from '@/utils/chat';
+import { mensagemErro } from '@/utils/erros';
 
 type Filtro = 'todas' | 'nao_lidas' | 'ativos';
 
@@ -62,13 +64,7 @@ export default function ChatListaScreen() {
   const [filtro, setFiltro] = useState<Filtro>('todas');
   const [busca, setBusca] = useState('');
 
-  const usuarioQuery = useQuery({
-    queryKey: ['usuario-logado'],
-    queryFn: async () => {
-      const { data } = await supabase.auth.getUser();
-      return data.user;
-    },
-  });
+  const usuarioQuery = useUsuarioLogado();
   const meuId = usuarioQuery.data?.id;
 
   const conversasQuery = useQuery({
@@ -163,7 +159,7 @@ export default function ChatListaScreen() {
             .update({ [campoOculto]: true })
             .eq('id', conversaId);
           if (error) {
-            Alert.alert('Não foi possível ocultar', error.message);
+            Alert.alert('Não foi possível ocultar', mensagemErro(error, 'ocultar a conversa'));
             return;
           }
           queryClient.invalidateQueries({ queryKey: ['conversas'] });

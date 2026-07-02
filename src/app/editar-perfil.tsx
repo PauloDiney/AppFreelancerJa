@@ -12,6 +12,7 @@ import { ThemedView } from '@/components/themed-view';
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { supabase } from '@/services/supabaseClient';
+import { mensagemErro } from '@/utils/erros';
 
 type Perfil = {
   nome_completo: string | null;
@@ -35,16 +36,17 @@ export default function EditarPerfilScreen() {
 
   const perfilQuery = useQuery({
     queryKey: ['editar-perfil'],
+    retry: 1,
     queryFn: async () => {
       const { data: sessao } = await supabase.auth.getUser();
       if (!sessao.user) throw new Error('Sessão expirada.');
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('nome_completo, telefone, biografia, foto_url')
-        .eq('id', sessao.user.id)
-        .single();
+      const [{ data, error }, { data: telefone, error: erroTelefone }] = await Promise.all([
+        supabase.from('profiles').select('nome_completo, biografia, foto_url').eq('id', sessao.user.id).single(),
+        supabase.rpc('meu_telefone'),
+      ]);
       if (error) throw error;
-      return { usuarioId: sessao.user.id, perfil: data as Perfil };
+      if (erroTelefone) throw erroTelefone;
+      return { usuarioId: sessao.user.id, perfil: { ...data, telefone } as Perfil };
     },
   });
 
@@ -99,7 +101,7 @@ export default function EditarPerfilScreen() {
       setFotoUrl(novaUrl);
       queryClient.invalidateQueries({ queryKey: ['perfil-logado'] });
     } catch (erro) {
-      Alert.alert('Não foi possível enviar a foto', erro instanceof Error ? erro.message : 'Tente novamente.');
+      Alert.alert('Não foi possível enviar a foto', mensagemErro(erro as Error, 'enviar a foto'));
     } finally {
       setEnviandoFoto(false);
     }
@@ -119,7 +121,7 @@ export default function EditarPerfilScreen() {
     setSalvando(false);
 
     if (error) {
-      Alert.alert('Não foi possível salvar', error.message);
+      Alert.alert('Não foi possível salvar', mensagemErro(error, 'salvar as alterações'));
       return;
     }
 
@@ -131,6 +133,21 @@ export default function EditarPerfilScreen() {
     return (
       <ThemedView style={styles.loading}>
         <ActivityIndicator color={theme.primary} />
+      </ThemedView>
+    );
+  }
+
+  if (perfilQuery.isError) {
+    return (
+      <ThemedView style={[styles.loading, styles.erroContainer]}>
+        <ThemedText themeColor="statusDanger" style={styles.centerText}>
+          {mensagemErro(perfilQuery.error as Error, 'carregar seu perfil')}
+        </ThemedText>
+        <Pressable style={[styles.button, { backgroundColor: theme.primary }]} onPress={() => perfilQuery.refetch()}>
+          <ThemedText type="default" themeColor="background" style={styles.buttonText}>
+            Tentar novamente
+          </ThemedText>
+        </Pressable>
       </ThemedView>
     );
   }
@@ -235,6 +252,13 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  erroContainer: {
+    gap: Spacing.four,
+    paddingHorizontal: Spacing.four,
+  },
+  centerText: {
+    textAlign: 'center',
   },
   hero: {
     borderBottomLeftRadius: Spacing.five,

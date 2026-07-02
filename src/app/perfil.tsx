@@ -11,9 +11,11 @@ import { ThemedView } from '@/components/themed-view';
 import { Spacing } from '@/constants/theme';
 import { useEstatisticasPerfil } from '@/hooks/use-estatisticas-perfil';
 import { useTheme } from '@/hooks/use-theme';
+import { useUsuarioLogado } from '@/hooks/use-usuario-logado';
 import { supabase } from '@/services/supabaseClient';
 import { formatarGanhos, formatarQuando, formatarValor } from '@/utils/bico';
 import { abrirConversa } from '@/utils/chat';
+import { mensagemErro } from '@/utils/erros';
 
 type Perfil = {
   nome_completo: string | null;
@@ -59,13 +61,7 @@ export default function PerfilScreen() {
   const theme = useTheme();
   const router = useRouter();
 
-  const usuarioQuery = useQuery({
-    queryKey: ['usuario-logado'],
-    queryFn: async () => {
-      const { data } = await supabase.auth.getUser();
-      return data.user;
-    },
-  });
+  const usuarioQuery = useUsuarioLogado();
   const usuarioId = usuarioQuery.data?.id;
 
   const perfilQuery = useQuery({
@@ -123,7 +119,7 @@ export default function PerfilScreen() {
       const conversaId = await abrirConversa(bicoId, usuarioId, candidatoId);
       router.push({ pathname: '/chat/[id]', params: { id: conversaId } });
     } catch (erro) {
-      Alert.alert('Não foi possível abrir a conversa', erro instanceof Error ? erro.message : 'Tente novamente.');
+      Alert.alert('Não foi possível abrir a conversa', mensagemErro(erro as Error, 'abrir a conversa'));
     }
   };
 

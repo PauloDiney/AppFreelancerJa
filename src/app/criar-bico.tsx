@@ -11,9 +11,12 @@ import { ThemedView } from '@/components/themed-view';
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { supabase } from '@/services/supabaseClient';
+import { mensagemErro } from '@/utils/erros';
 
 type FormaPagamento = 'dinheiro' | 'pix';
 type Dia = 'hoje' | 'amanha';
+
+const HORA_REGEX = /^([01]\d|2[0-3]):([0-5]\d)$/;
 
 type Categoria = {
   id: number;
@@ -83,6 +86,10 @@ export default function CriarBicoScreen() {
       setErro('Informe um valor válido.');
       return;
     }
+    if (!HORA_REGEX.test(hora.trim())) {
+      setErro('Informe um horário válido (formato HH:MM).');
+      return;
+    }
 
     setEnviando(true);
 
@@ -109,7 +116,7 @@ export default function CriarBicoScreen() {
     setEnviando(false);
 
     if (error) {
-      setErro(error.message);
+      setErro(mensagemErro(error, 'publicar o bico'));
       return;
     }
 

@@ -19,9 +19,11 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
+import { useUsuarioLogado } from '@/hooks/use-usuario-logado';
 import { supabase } from '@/services/supabaseClient';
 import { formatarValor, iniciais } from '@/utils/bico';
 import { formatarHoraMensagem } from '@/utils/chat';
+import { mensagemErro } from '@/utils/erros';
 
 type ConversaBruta = {
   id: string;
@@ -73,13 +75,7 @@ export default function ChatConversaScreen() {
   const [comentarioAvaliacao, setComentarioAvaliacao] = useState('');
   const [enviandoAvaliacao, setEnviandoAvaliacao] = useState(false);
 
-  const usuarioQuery = useQuery({
-    queryKey: ['usuario-logado'],
-    queryFn: async () => {
-      const { data } = await supabase.auth.getUser();
-      return data.user;
-    },
-  });
+  const usuarioQuery = useUsuarioLogado();
   const meuId = usuarioQuery.data?.id;
 
   const conversaQuery = useQuery({
@@ -202,7 +198,7 @@ export default function ChatConversaScreen() {
     setEnviando(false);
 
     if (error) {
-      Alert.alert('Não foi possível enviar', error.message);
+      Alert.alert('Não foi possível enviar', mensagemErro(error, 'enviar a mensagem'));
       setMensagemAtual(texto);
       return;
     }
@@ -217,35 +213,31 @@ export default function ChatConversaScreen() {
     setEnviandoAvaliacao(true);
 
     if (avaliacao.acao === 'fechar') {
-      const { error: erroFechar } = await supabase.from('bicos').update({ status: 'concluido' }).eq('id', bicoId);
+      const { error: erroFechar } = await supabase.rpc('fechar_bico_e_avaliar', {
+        p_bico_id: bicoId,
+        p_nota: notaSelecionada,
+        p_comentario: comentarioAvaliacao.trim() || null,
+      });
       if (erroFechar) {
         setEnviandoAvaliacao(false);
-        Alert.alert('Não foi possível concluir', erroFechar.message);
+        Alert.alert('Não foi possível concluir', mensagemErro(erroFechar, 'concluir o serviço'));
         return;
       }
-    }
-
-    const { error: erroAvaliacao } = await supabase.from('avaliacoes').insert({
-      bico_id: bicoId,
-      avaliador_id: meuId,
-      avaliado_id: outroId,
-      papel_avaliado: avaliacao.papel,
-      nota: notaSelecionada,
-      comentario: comentarioAvaliacao.trim() || null,
-    });
-
-    if (erroAvaliacao) {
-      setEnviandoAvaliacao(false);
-      Alert.alert('Não foi possível enviar a avaliação', erroAvaliacao.message);
-      return;
-    }
-
-    if (avaliacao.acao === 'fechar') {
-      await supabase.from('mensagens').insert({
-        conversa_id: id,
-        remetente_id: meuId,
-        conteudo: 'Serviço marcado como concluído. 🎉',
+    } else {
+      const { error: erroAvaliacao } = await supabase.from('avaliacoes').insert({
+        bico_id: bicoId,
+        avaliador_id: meuId,
+        avaliado_id: outroId,
+        papel_avaliado: avaliacao.papel,
+        nota: notaSelecionada,
+        comentario: comentarioAvaliacao.trim() || null,
       });
+
+      if (erroAvaliacao) {
+        setEnviandoAvaliacao(false);
+        Alert.alert('Não foi possível enviar a avaliação', mensagemErro(erroAvaliacao, 'enviar a avaliação'));
+        return;
+      }
     }
 
     setEnviandoAvaliacao(false);

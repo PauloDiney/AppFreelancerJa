@@ -9,9 +9,11 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
+import { useUsuarioLogado } from '@/hooks/use-usuario-logado';
 import { supabase } from '@/services/supabaseClient';
 import { AVATAR_PALETTE, calcularBadge, formatarQuando, formatarValor, iniciais } from '@/utils/bico';
 import { abrirConversa } from '@/utils/chat';
+import { mensagemErro } from '@/utils/erros';
 
 type Bico = {
   id: string;
@@ -49,13 +51,7 @@ export default function BicoDetalheScreen() {
   const [processando, setProcessando] = useState(false);
   const [abrindoConversa, setAbrindoConversa] = useState(false);
 
-  const usuarioQuery = useQuery({
-    queryKey: ['usuario-logado'],
-    queryFn: async () => {
-      const { data } = await supabase.auth.getUser();
-      return data.user;
-    },
-  });
+  const usuarioQuery = useUsuarioLogado();
 
   const bicoQuery = useQuery({
     queryKey: ['bico', id],
@@ -123,7 +119,7 @@ export default function BicoDetalheScreen() {
     setProcessando(false);
 
     if (error) {
-      Alert.alert('Não foi possível escolher', error.message);
+      Alert.alert('Não foi possível escolher', mensagemErro(error, 'escolher este candidato'));
       return;
     }
     atualizarTudo();
@@ -143,7 +139,7 @@ export default function BicoDetalheScreen() {
       const conversaId = await abrirConversa(id, usuarioId, outroId);
       router.push({ pathname: '/chat/[id]', params: { id: conversaId } });
     } catch (erro) {
-      Alert.alert('Não foi possível abrir a conversa', erro instanceof Error ? erro.message : 'Tente novamente.');
+      Alert.alert('Não foi possível abrir a conversa', mensagemErro(erro as Error, 'abrir a conversa'));
     } finally {
       setAbrindoConversa(false);
     }
@@ -156,7 +152,7 @@ export default function BicoDetalheScreen() {
     setProcessando(false);
 
     if (error) {
-      Alert.alert('Não foi possível se candidatar', error.message);
+      Alert.alert('Não foi possível se candidatar', mensagemErro(error, 'se candidatar'));
       return;
     }
     atualizarTudo();
