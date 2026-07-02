@@ -70,5 +70,8 @@ export const Spacing = {
   six: 64,
 } as const;
 
+// Ainda não usados em nenhuma tela — deixados prontos pra quando telas com
+// scroll precisarem reservar espaço pra bottom tab bar (BottomTabInset) ou
+// limitar a largura do conteúdo em telas largas/web (MaxContentWidth).
 export const BottomTabInset = Platform.select({ ios: 50, android: 80 }) ?? 0;
 export const MaxContentWidth = 800;

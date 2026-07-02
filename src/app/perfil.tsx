@@ -57,6 +57,9 @@ const LISTA_MENU: {
   { label: 'Configurações e segurança', icone: 'settings-outline', cor: 'textSecondary', rota: '/configuracoes' },
 ];
 
+// Tela de perfil próprio (tab "Perfil"): estatísticas gerais, bicos em que o
+// usuário foi escolhido como prestador ("Em andamento") e bicos que o
+// usuário criou como contratante e ainda não concluiu ("Bicos criados").
 export default function PerfilScreen() {
   const theme = useTheme();
   const router = useRouter();

@@ -2,6 +2,9 @@ import { useQuery } from '@tanstack/react-query';
 
 import { supabase } from '@/services/supabaseClient';
 
+// Agrega os números mostrados no perfil e no histórico: quantos bicos o
+// usuário concluiu como prestador, quanto ganhou com eles, e a nota média
+// (como prestador + como contratante somadas — ver comentário abaixo).
 export function useEstatisticasPerfil(usuarioId: string | undefined) {
   const bicosQuery = useQuery({
     queryKey: ['estatisticas-prestador', usuarioId],

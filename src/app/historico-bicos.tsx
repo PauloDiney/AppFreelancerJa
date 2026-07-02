@@ -38,6 +38,10 @@ function badgeStatus(status: StatusHistorico) {
   return { texto: 'CANCELADO', cor: 'textSecondary' as const };
 }
 
+// Histórico de bicos em que o usuário foi o prestador (candidato
+// selecionado) — não inclui os bicos que ele criou como contratante, isso
+// fica em /perfil. Agrupado por mês, exceto os "em_andamento" que ficam
+// destacados no topo em qualquer filtro.
 export default function HistoricoBicosScreen() {
   const theme = useTheme();
   const router = useRouter();

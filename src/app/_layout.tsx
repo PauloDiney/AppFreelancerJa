@@ -8,6 +8,10 @@ import { useResolvedColorScheme } from '@/hooks/use-resolved-color-scheme';
 import { supabase } from '@/services/supabaseClient';
 import { useAuthStore } from '@/stores/auth-store';
 
+// Layout raiz do expo-router: fica montado o tempo todo, então é o lugar
+// certo pra coisas globais (providers, a única inscrição de realtime do
+// app, espelhar a sessão do Supabase no auth-store) sem precisar duplicar
+// isso em cada tela.
 const queryClient = new QueryClient();
 
 // Mantém uma única inscrição de realtime pro app inteiro. Se cada tela que usa a

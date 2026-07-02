@@ -1,5 +1,10 @@
 import { supabase } from '@/services/supabaseClient';
 
+// Idempotente: se já existe uma conversa entre esses dois participantes pra
+// esse bico, reaproveita ela em vez de criar uma duplicada (o par pode estar
+// em qualquer ordem nas colunas participante_1/participante_2). A policy de
+// RLS de INSERT em "conversas" só deixa criar quando um dos dois é o
+// candidato_selecionado_id do bico — ver migration 0010.
 export async function abrirConversa(bicoId: string, meuId: string, outroId: string) {
   const { data: existente, error: erroBusca } = await supabase
     .from('conversas')

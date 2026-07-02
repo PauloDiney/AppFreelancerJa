@@ -33,6 +33,10 @@ type Bico = {
   } | null;
 };
 
+// Feed inicial (tab "Início"): lista os 15 bicos abertos mais recentes,
+// com filtro por categoria e busca por título aplicados só no cliente sobre
+// esse mesmo lote de 15 — não é uma busca no banco. Pra buscar entre todos
+// os bicos abertos, é a tela /buscar.
 export default function HomeScreen() {
   const theme = useTheme();
   const router = useRouter();

@@ -22,6 +22,10 @@ export default function ConfiguracoesScreen() {
   const router = useRouter();
   const { preferencia, definirPreferencia } = usePreferenciaTema();
 
+  // Estado só local, não persiste em lugar nenhum e não tem efeito real
+  // ainda — "Notificações", "Identidade verificada", "Alterar senha",
+  // "Verificação em duas etapas" e "Denúncias e bloqueios" são placeholders
+  // de UI. Só a preferência de tema (acima) é de verdade, via theme-store.
   const [notificacoesAtivas, setNotificacoesAtivas] = useState(true);
   const [duasEtapas, setDuasEtapas] = useState(false);
 

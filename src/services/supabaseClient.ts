@@ -12,6 +12,10 @@ if (!supabaseUrl || !supabaseAnonKey) {
   );
 }
 
+// Cliente único do Supabase, usado em todo o app (telas, hooks, RPCs).
+// A sessão fica persistida no AsyncStorage pra não deslogar entre aberturas
+// do app. detectSessionInUrl é false porque este é um app mobile: não existe
+// fluxo de redirect por URL (magic link/OAuth) como teria numa versão web.
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
     storage: AsyncStorage,

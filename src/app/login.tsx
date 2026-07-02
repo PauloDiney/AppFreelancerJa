@@ -10,6 +10,9 @@ import { supabase } from '@/services/supabaseClient';
 
 type Modo = 'entrar' | 'criar';
 
+// Tela de entrar/criar conta (alterna entre os dois modos na mesma UI).
+// Login com Google ainda não foi configurado no projeto Supabase — o botão
+// existe na UI mas só mostra um aviso.
 export default function LoginScreen() {
   const theme = useTheme();
   const router = useRouter();
@@ -41,6 +44,8 @@ export default function LoginScreen() {
       return;
     }
 
+    // signUp sem sessão de volta = o projeto exige confirmação de e-mail
+    // antes de liberar login (configuração do Supabase Auth, não um erro).
     if (!data.session) {
       setErro('Confirme seu e-mail para continuar. Verifique sua caixa de entrada.');
       return;

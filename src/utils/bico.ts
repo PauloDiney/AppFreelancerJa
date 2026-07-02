@@ -1,5 +1,9 @@
 import { ThemeColor } from '@/constants/theme';
 
+// Funções de formatação/exibição usadas pelas telas relacionadas a "bico"
+// (feed, busca, detalhe, perfil). Não fazem chamada de rede — só transformam
+// dados que as telas já buscaram.
+
 export function iniciais(nome: string | null) {
   if (!nome) return '?';
   const partes = nome.trim().split(/\s+/);
@@ -15,6 +19,9 @@ export function tempoRelativo(dataIso: string) {
   return `há ${Math.round(diffHoras / 24)}d`;
 }
 
+// Regra de negócio do selo do card: "URGENTE" se faltam 3h ou menos pro
+// horário desejado (e ainda não passou), senão "HOJE" se for no mesmo dia.
+// Bicos passados ou sem data não recebem selo.
 export function calcularBadge(dataHoraDesejada: string | null): { texto: string; cor: ThemeColor } | null {
   if (!dataHoraDesejada) return null;
   const alvo = new Date(dataHoraDesejada);

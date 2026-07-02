@@ -58,6 +58,10 @@ function labelPagamento(bico: ConversaBruta['bicos']) {
   return metodo;
 }
 
+// Tela de uma conversa. Além de mandar/receber mensagem em tempo real,
+// concentra o fim do ciclo de vida do bico: o contratante fecha o serviço
+// (marca concluído + avalia o prestador) e o prestador avalia o contratante
+// depois que o bico está concluído.
 export default function ChatConversaScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const theme = useTheme();
@@ -135,6 +139,10 @@ export default function ChatConversaScreen() {
   useEffect(() => {
     if (!id) return;
     const topico = `mensagens-${id}`;
+    // Remove uma inscrição antiga no mesmo tópico antes de assinar de novo:
+    // sem isso, um remount rápido da tela (ex: navegação rápida entre
+    // conversas) tenta dar .on() num canal já inscrito e quebra (mesmo
+    // problema documentado no _layout.tsx pro canal global de mensagens).
     const canalExistente = supabase.getChannels().find((c) => c.topic === `realtime:${topico}`);
     if (canalExistente) supabase.removeChannel(canalExistente);
 
@@ -157,6 +165,9 @@ export default function ChatConversaScreen() {
     };
   }, [id, queryClient]);
 
+  // Marca como lidas as mensagens do outro participante assim que essa tela
+  // abre (ou quando chegam novas via realtime). É esse efeito que zera o
+  // badge de não lidas na bottom tab bar e na lista de conversas.
   useEffect(() => {
     if (!meuId || !mensagensQuery.data) return;
     const naoLidas = mensagensQuery.data.filter((m) => m.remetente_id !== meuId && !m.lido_em);
@@ -213,6 +224,10 @@ export default function ChatConversaScreen() {
     setEnviandoAvaliacao(true);
 
     if (avaliacao.acao === 'fechar') {
+      // RPC (não update + insert separados) porque fechar o bico, gravar a
+      // avaliação e mandar a mensagem de encerramento precisam acontecer
+      // como uma transação só — se a avaliação falhar (ex: duplicada), o
+      // bico não pode ficar marcado concluído sem avaliação (migration 0011).
       const { error: erroFechar } = await supabase.rpc('fechar_bico_e_avaliar', {
         p_bico_id: bicoId,
         p_nota: notaSelecionada,

@@ -3,6 +3,9 @@ import { Platform, StyleSheet, Text, type TextProps } from 'react-native';
 import { Fonts, ThemeColor } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 
+// <Text> que já resolve a cor pelo tema atual (claro/escuro) e expõe as
+// variações tipográficas do app como um "type" só, em vez de repetir
+// StyleSheet de fonte em cada tela.
 export type ThemedTextProps = TextProps & {
   type?: 'default' | 'title' | 'small' | 'smallBold' | 'subtitle' | 'link' | 'linkPrimary' | 'code';
   themeColor?: ThemeColor;

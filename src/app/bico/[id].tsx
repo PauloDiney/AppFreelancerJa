@@ -43,6 +43,10 @@ type Candidatura = {
   } | null;
 };
 
+// Tela de detalhe de um bico. O conteúdo muda bastante dependendo de quem
+// está olhando: quem criou o bico (souCriador) vê a lista de candidatos e
+// pode escolher um; quem não criou vê o próprio status de candidatura
+// (pendente/aceita/recusada) e o botão de se candidatar.
 export default function BicoDetalheScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const theme = useTheme();
@@ -81,6 +85,9 @@ export default function BicoDetalheScreen() {
         .eq('bico_id', id);
       if (error) throw error;
       const lista = data as unknown as Candidatura[];
+      // Ordena por nota decrescente (candidatos sem nota ainda ficam por
+      // último) — é essa ordem que define quem aparece com o botão
+      // "Escolher" direto (index 0) e quem cai no fluxo de confirmação.
       return [...lista].sort(
         (a, b) => (b.profiles?.nota_media_como_prestador ?? 0) - (a.profiles?.nota_media_como_prestador ?? 0)
       );
@@ -112,6 +119,10 @@ export default function BicoDetalheScreen() {
 
   const escolherCandidato = async (candidatoId: string) => {
     setProcessando(true);
+    // RPC no banco (não um update direto) porque escolher um candidato é
+    // uma transação com 3 passos — aceitar essa candidatura, recusar as
+    // outras pendentes e marcar o bico como em_andamento — que precisam
+    // acontecer juntos ou não acontecer (ver migration 0004).
     const { error } = await supabase.rpc('escolher_candidato', {
       p_bico_id: id,
       p_candidato_id: candidatoId,

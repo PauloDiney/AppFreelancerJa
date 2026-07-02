@@ -57,6 +57,10 @@ type Mensagem = {
   lido_em: string | null;
 };
 
+// Lista de conversas (tab "Chat"). "Ocultar" (swipe) só some a conversa da
+// lista de quem ocultou — ela continua existindo e visível pro outro
+// participante — e só fica disponível depois que o bico é concluído
+// (ver migration 0009).
 export default function ChatListaScreen() {
   const theme = useTheme();
   const router = useRouter();

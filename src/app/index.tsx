@@ -6,6 +6,9 @@ import { ThemedView } from '@/components/themed-view';
 import { useTheme } from '@/hooks/use-theme';
 import { supabase } from '@/services/supabaseClient';
 
+// Rota raiz ("/"), primeira coisa que abre no app. Não tem UI própria: só
+// checa se já existe uma sessão do Supabase salva no dispositivo e manda
+// pra /home ou /login de acordo.
 export default function Gate() {
   const router = useRouter();
   const theme = useTheme();

@@ -21,6 +21,7 @@ type Perfil = {
   foto_url: string | null;
 };
 
+// Tela de edição do próprio perfil (nome, telefone, biografia, foto).
 export default function EditarPerfilScreen() {
   const theme = useTheme();
   const router = useRouter();
@@ -40,6 +41,12 @@ export default function EditarPerfilScreen() {
     queryFn: async () => {
       const { data: sessao } = await supabase.auth.getUser();
       if (!sessao.user) throw new Error('Sessão expirada.');
+      // O telefone não vem junto do select de profiles de propósito: essa
+      // coluna foi bloqueada por RLS pra qualquer authenticated (migration
+      // 0011, pra ninguém conseguir ler o telefone de outro usuário) e só
+      // pode ser lida pelo dono via essa RPC (meu_telefone). Não dá pra
+      // "simplificar" isso de volta pra um select direto sem reabrir a
+      // brecha de privacidade.
       const [{ data, error }, { data: telefone, error: erroTelefone }] = await Promise.all([
         supabase.from('profiles').select('nome_completo, biografia, foto_url').eq('id', sessao.user.id).single(),
         supabase.rpc('meu_telefone'),

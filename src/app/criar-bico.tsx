@@ -23,6 +23,10 @@ type Categoria = {
   nome: string;
 };
 
+// Formato WKT que o Postgis (coluna geography do bico) espera receber via
+// insert. Se o usuário negar a permissão de localização, o bico é criado
+// sem coordenadas (só com o endereço em texto) — a busca por proximidade
+// (bicos_proximos) simplesmente não vai encontrar esse bico depois.
 async function obterLocalizacaoAtual(): Promise<string | null> {
   try {
     const { status } = await Location.requestForegroundPermissionsAsync();
@@ -34,6 +38,10 @@ async function obterLocalizacaoAtual(): Promise<string | null> {
   }
 }
 
+// Formulário de publicação de bico, aberto pelo botão "+" central da bottom
+// tab bar. valor_oferecido é sempre por dia (não há opção de outra
+// unidade); forma_pagamento pix só mostra um aviso, o QR Code em si é
+// gerado depois, quando o contratante escolhe o candidato.
 export default function CriarBicoScreen() {
   const theme = useTheme();
   const router = useRouter();

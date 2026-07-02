@@ -19,6 +19,10 @@ const TABS: { key: TabKey; label: string; icone: keyof typeof Ionicons.glyphMap;
   { key: 'perfil', label: 'Perfil', icone: 'person-outline', rota: '/perfil' },
 ];
 
+// Navegação inferior usada em home/buscar/chat/perfil — cada uma dessas
+// telas passa sua própria TabKey em "ativo" pra destacar o ícone certo. O
+// botão central "+" não é uma tab (não recebe estado "ativo") e sempre abre
+// /criar-bico por cima da tela atual.
 export function BottomTabBar({ ativo }: { ativo: TabKey }) {
   const theme = useTheme();
   const router = useRouter();

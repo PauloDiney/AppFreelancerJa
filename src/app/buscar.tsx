@@ -48,6 +48,10 @@ const CATEGORIA_CORES = [
 ];
 const COR_TUDO = { bg: '#E8E8E8', cor: '#5B6472' };
 
+// Tela de busca (tab "Buscar"): busca por título, filtro por categoria e
+// ordenação por valor/recência — tudo aplicado no cliente sobre os 30 bicos
+// abertos mais recentes buscados do banco, não é uma query de busca real no
+// servidor. Botão de "Filtros avançados" ainda não foi implementado.
 export default function BuscarScreen() {
   const theme = useTheme();
   const [busca, setBusca] = useState('');
