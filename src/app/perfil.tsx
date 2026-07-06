@@ -49,11 +49,10 @@ const LISTA_MENU: {
   label: string;
   icone: keyof typeof Ionicons.glyphMap;
   cor: 'primary' | 'statusSuccess' | 'statusPending' | 'textSecondary';
-  rota?: '/configuracoes' | '/historico-bicos';
+  rota?: '/configuracoes' | '/historico-bicos' | '/pagamentos';
 }[] = [
   { label: 'Histórico de bicos', icone: 'time-outline', cor: 'primary', rota: '/historico-bicos' },
-  { label: 'Pagamentos e comprovantes', icone: 'cash-outline', cor: 'statusSuccess' },
-  { label: 'Minhas avaliações', icone: 'star-outline', cor: 'statusPending' },
+  { label: 'Pagamentos e comprovantes', icone: 'cash-outline', cor: 'statusSuccess', rota: '/pagamentos' },
   { label: 'Configurações e segurança', icone: 'settings-outline', cor: 'textSecondary', rota: '/configuracoes' },
 ];
 

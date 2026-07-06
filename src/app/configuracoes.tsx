@@ -70,8 +70,13 @@ export default function ConfiguracoesScreen() {
           <ThemedText type="small" themeColor="textSecondary">
             CONTA
           </ThemedText>
-          <ConfigRow icone="person-circle-outline" cor="primary" label="Dados pessoais" />
-          <ConfigRow icone="cash-outline" cor="statusPending" label="Métodos de pagamento" />
+          <ConfigRow icone="person-circle-outline" cor="primary" label="Dados pessoais" onPress={() => router.push('/dados-pessoais')} />
+          <ConfigRow
+            icone="cash-outline"
+            cor="statusPending"
+            label="Métodos de pagamento"
+            onPress={() => router.push('/metodos-pagamento')}
+          />
           <ConfigRow
             icone="notifications-outline"
             cor="statusSuccess"
@@ -189,6 +194,7 @@ function ConfigRow({
   toggle,
   valor,
   aoAlternar,
+  onPress,
 }: {
   icone: keyof typeof Ionicons.glyphMap;
   cor: ThemeColor;
@@ -197,11 +203,16 @@ function ConfigRow({
   toggle?: boolean;
   valor?: boolean;
   aoAlternar?: (valor: boolean) => void;
+  onPress?: () => void;
 }) {
   const theme = useTheme();
 
   return (
-    <View style={[styles.row, { backgroundColor: theme.background, borderColor: theme.backgroundSelected }]}>
+    <Pressable
+      style={[styles.row, { backgroundColor: theme.background, borderColor: theme.backgroundSelected }]}
+      onPress={onPress}
+      disabled={!onPress && !toggle}
+    >
       <View style={[styles.rowIcone, { backgroundColor: theme.backgroundElement }]}>
         <Ionicons name={icone} size={18} color={theme[cor]} />
       </View>
@@ -213,7 +224,7 @@ function ConfigRow({
       ) : (
         <Ionicons name="chevron-forward" size={18} color={theme.textSecondary} />
       )}
-    </View>
+    </Pressable>
   );
 }
 
