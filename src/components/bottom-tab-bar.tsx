@@ -32,7 +32,7 @@ export function BottomTabBar({ ativo }: { ativo: TabKey }) {
 
   const naoLidasQuery = useQuery({
     queryKey: ['total-nao-lidas', usuarioId],
-    queryFn: () => contarNaoLidas(usuarioId!),
+    queryFn: contarNaoLidas,
     enabled: !!usuarioId,
   });
 

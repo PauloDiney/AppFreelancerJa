@@ -2,8 +2,9 @@ import { Ionicons } from '@expo/vector-icons';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import * as Location from 'expo-location';
 import { useRouter } from 'expo-router';
+import { StatusBar } from 'expo-status-bar';
 import { useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
+import { Alert, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ThemedText } from '@/components/themed-text';
@@ -27,10 +28,37 @@ type Categoria = {
 // insert. Se o usuário negar a permissão de localização, o bico é criado
 // sem coordenadas (só com o endereço em texto) — a busca por proximidade
 // (bicos_proximos) simplesmente não vai encontrar esse bico depois.
+//
+// O aviso antes do prompt do sistema existe porque o app estava pedindo o GPS
+// sem dizer pra quê, no meio de publicar um bico. Quem recusa aqui nem chega a
+// ver o prompt nativo — que no iOS só aparece uma vez e, negado, só volta pelos
+// Ajustes. A coordenada em si não é devolvida pra ninguém: desde a migration
+// 0015 a coluna não é legível por outras contas e bicos_proximos só responde
+// distância em metros.
 async function obterLocalizacaoAtual(): Promise<string | null> {
   try {
+    const permissaoAtual = await Location.getForegroundPermissionsAsync();
+
+    if (!permissaoAtual.granted) {
+      if (!permissaoAtual.canAskAgain) return null;
+
+      const querPermitir = await new Promise<boolean>((resolve) => {
+        Alert.alert(
+          'Usar sua localização?',
+          'Serve só pra mostrar este bico pra quem está perto. Ninguém vê o ponto exato — quem procura vê apenas a distância.',
+          [
+            { text: 'Agora não', style: 'cancel', onPress: () => resolve(false) },
+            { text: 'Permitir', onPress: () => resolve(true) },
+          ],
+          { cancelable: true, onDismiss: () => resolve(false) }
+        );
+      });
+      if (!querPermitir) return null;
+    }
+
     const { status } = await Location.requestForegroundPermissionsAsync();
     if (status !== 'granted') return null;
+
     const posicao = await Location.getCurrentPositionAsync({});
     return `POINT(${posicao.coords.longitude} ${posicao.coords.latitude})`;
   } catch {
@@ -128,12 +156,13 @@ export default function CriarBicoScreen() {
       return;
     }
 
-    queryClient.invalidateQueries({ queryKey: ['bicos-destaque'] });
+    queryClient.invalidateQueries({ queryKey: ['bicos-abertos'] });
     router.back();
   };
 
   return (
     <ThemedView style={styles.container}>
+      <StatusBar style="light" />
       <View style={[styles.hero, { backgroundColor: theme.primary }]}>
         <SafeAreaView edges={['top']} style={styles.heroContent}>
           <Pressable style={[styles.backButton, { backgroundColor: theme.background }]} onPress={() => router.back()}>
@@ -269,10 +298,15 @@ export default function CriarBicoScreen() {
             </Pressable>
           </View>
 
+          {/* O texto antigo prometia "o QR Code será gerado quando você
+              escolher o candidato" — não existe geração de QR em lugar nenhum,
+              e a chave Pix do prestador nem chega em quem paga (a RLS de
+              chaves_pix só deixa o dono ler a própria). Enquanto o Pix não for
+              integrado de verdade, o texto diz o que realmente acontece. */}
           {formaPagamento === 'pix' && (
             <View style={[styles.hint, { backgroundColor: theme.backgroundSelected }]}>
               <ThemedText type="small" themeColor="primary">
-                Pix selecionado — o QR Code será gerado quando você escolher o candidato.
+                Pix selecionado — combine a chave com o prestador pelo chat depois de escolher.
               </ThemedText>
             </View>
           )}

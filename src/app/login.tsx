@@ -1,4 +1,5 @@
 import { useRouter } from 'expo-router';
+import { StatusBar } from 'expo-status-bar';
 import { useState } from 'react';
 import { KeyboardAvoidingView, Platform, Pressable, StyleSheet, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -10,14 +11,33 @@ import { supabase } from '@/services/supabaseClient';
 
 type Modo = 'entrar' | 'criar';
 
+// Traduz os erros do Supabase Auth sem revelar se a conta existe: tanto
+// "senha errada" quanto "usuário inexistente" voltam como invalid_credentials
+// e viram a mesma frase. Antes a tela mostrava error.message cru, que
+// distinguia os dois casos (e vinha em inglês).
+function mensagemErroAuth(codigo: string | undefined) {
+  switch (codigo) {
+    case 'invalid_credentials':
+      return 'E-mail ou senha incorretos.';
+    case 'email_not_confirmed':
+      return 'Confirme seu e-mail antes de entrar. Verifique sua caixa de entrada.';
+    case 'weak_password':
+      return 'Senha muito fraca. Use pelo menos 6 caracteres.';
+    case 'over_request_rate_limit':
+    case 'over_email_send_rate_limit':
+      return 'Muitas tentativas seguidas. Espere um pouco e tente de novo.';
+    default:
+      return 'Não foi possível continuar. Tente novamente.';
+  }
+}
+
 // Tela de entrar/criar conta (alterna entre os dois modos na mesma UI).
-// Login com Google ainda não foi configurado no projeto Supabase — o botão
-// existe na UI mas só mostra um aviso.
 export default function LoginScreen() {
   const theme = useTheme();
   const router = useRouter();
 
   const [modo, setModo] = useState<Modo>('entrar');
+  const [nome, setNome] = useState('');
   const [email, setEmail] = useState('');
   const [senha, setSenha] = useState('');
   const [mostrarSenha, setMostrarSenha] = useState(false);
@@ -31,16 +51,28 @@ export default function LoginScreen() {
       setErro('Informe um e-mail válido e uma senha com pelo menos 6 caracteres.');
       return;
     }
+    if (modo === 'criar' && nome.trim().length < 2) {
+      setErro('Informe seu nome — é ele que aparece pra quem for te contratar.');
+      return;
+    }
 
     setCarregando(true);
+    // nome_completo vai em options.data e cai em raw_user_meta_data, de onde o
+    // trigger handle_new_user grava direto no profile (migration 0016) — mesmo
+    // caminho que o telefone já usava. Sem isso, todo usuário novo nascia sem
+    // nome e aparecia como "Sem nome"/"Alguém" pelo app inteiro.
     const { data, error } =
       modo === 'entrar'
-        ? await supabase.auth.signInWithPassword({ email, password: senha })
-        : await supabase.auth.signUp({ email, password: senha });
+        ? await supabase.auth.signInWithPassword({ email: email.trim(), password: senha })
+        : await supabase.auth.signUp({
+            email: email.trim(),
+            password: senha,
+            options: { data: { nome_completo: nome.trim() } },
+          });
     setCarregando(false);
 
     if (error) {
-      setErro(error.message);
+      setErro(mensagemErroAuth(error.code));
       return;
     }
 
@@ -54,12 +86,9 @@ export default function LoginScreen() {
     router.replace('/home');
   };
 
-  const handleGoogle = () => {
-    setErro('Login com Google ainda não configurado neste projeto.');
-  };
-
   return (
     <View style={styles.container}>
+      <StatusBar style="light" />
       <View style={[styles.hero, { backgroundColor: theme.primary }]}>
         <SafeAreaView style={styles.heroContent}>
           <ThemedText type="title" themeColor="background" style={styles.centerText}>
@@ -94,6 +123,30 @@ export default function LoginScreen() {
               </ThemedText>
             </Pressable>
           </View>
+
+          {modo === 'criar' && (
+            <View style={styles.field}>
+              <ThemedText type="small" themeColor="textSecondary">
+                NOME COMPLETO
+              </ThemedText>
+              <View
+                style={[
+                  styles.inputRow,
+                  { backgroundColor: theme.background, borderColor: theme.backgroundSelected },
+                ]}
+              >
+                <TextInput
+                  value={nome}
+                  onChangeText={setNome}
+                  placeholder="Como quer ser chamado"
+                  placeholderTextColor={theme.textSecondary}
+                  autoCapitalize="words"
+                  maxLength={120}
+                  style={[styles.input, { color: theme.text }]}
+                />
+              </View>
+            </View>
+          )}
 
           <View style={styles.field}>
             <ThemedText type="small" themeColor="textSecondary">
@@ -150,14 +203,6 @@ export default function LoginScreen() {
             </ThemedText>
           )}
 
-          {modo === 'entrar' && (
-            <Pressable>
-              <ThemedText type="small" themeColor="textSecondary" style={styles.forgotPassword}>
-                Esqueci minha senha
-              </ThemedText>
-            </Pressable>
-          )}
-
           <Pressable
             style={[styles.button, { backgroundColor: theme.primary }, carregando && styles.disabled]}
             onPress={handleSubmit}
@@ -168,25 +213,6 @@ export default function LoginScreen() {
             </ThemedText>
           </Pressable>
 
-          <View style={styles.dividerRow}>
-            <View style={[styles.dividerLine, { backgroundColor: theme.backgroundSelected }]} />
-            <ThemedText type="small" themeColor="textSecondary">
-              ou
-            </ThemedText>
-            <View style={[styles.dividerLine, { backgroundColor: theme.backgroundSelected }]} />
-          </View>
-
-          <Pressable
-            style={[
-              styles.googleButton,
-              { borderColor: theme.backgroundSelected, backgroundColor: theme.background },
-            ]}
-            onPress={handleGoogle}
-          >
-            <ThemedText type="default" style={styles.buttonText}>
-              Continuar com Google
-            </ThemedText>
-          </Pressable>
         </SafeAreaView>
       </KeyboardAvoidingView>
     </View>
@@ -247,9 +273,6 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 16,
   },
-  forgotPassword: {
-    textAlign: 'right',
-  },
   button: {
     borderRadius: Spacing.two,
     paddingVertical: Spacing.three,
@@ -260,20 +283,5 @@ const styles = StyleSheet.create({
   },
   buttonText: {
     fontWeight: '700',
-  },
-  dividerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.two,
-  },
-  dividerLine: {
-    flex: 1,
-    height: 1,
-  },
-  googleButton: {
-    borderWidth: 1,
-    borderRadius: Spacing.two,
-    paddingVertical: Spacing.three,
-    alignItems: 'center',
   },
 });

@@ -1,9 +1,9 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Image } from 'expo-image';
-import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { StatusBar } from 'expo-status-bar';
+import { useState } from 'react';
 import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -12,6 +12,7 @@ import { ThemedView } from '@/components/themed-view';
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { supabase } from '@/services/supabaseClient';
+import { ErroAvatar, escolherEEnviarAvatar } from '@/utils/avatar';
 import { mensagemErro } from '@/utils/erros';
 
 type Perfil = {
@@ -22,18 +23,15 @@ type Perfil = {
 };
 
 // Tela de edição do próprio perfil (nome, telefone, biografia, foto).
+//
+// A tela está partida em duas: esta busca os dados, e <FormularioPerfil> só é
+// montado quando eles chegam, inicializando os campos direto no useState. Antes
+// era um componente só que copiava a resposta pra dentro do estado num
+// useEffect — o que dispara uma cascata de renders a cada carregamento (é o que
+// a regra react-hooks/set-state-in-effect aponta) e deixava a tela num estado
+// intermediário com todos os campos vazios.
 export default function EditarPerfilScreen() {
   const theme = useTheme();
-  const router = useRouter();
-  const queryClient = useQueryClient();
-
-  const [usuarioId, setUsuarioId] = useState<string | null>(null);
-  const [nome, setNome] = useState('');
-  const [telefone, setTelefone] = useState('');
-  const [biografia, setBiografia] = useState('');
-  const [fotoUrl, setFotoUrl] = useState<string | null>(null);
-  const [enviandoFoto, setEnviandoFoto] = useState(false);
-  const [salvando, setSalvando] = useState(false);
 
   const perfilQuery = useQuery({
     queryKey: ['editar-perfil'],
@@ -57,65 +55,71 @@ export default function EditarPerfilScreen() {
     },
   });
 
-  useEffect(() => {
-    if (!perfilQuery.data) return;
-    setUsuarioId(perfilQuery.data.usuarioId);
-    setNome(perfilQuery.data.perfil.nome_completo ?? '');
-    setTelefone(perfilQuery.data.perfil.telefone ?? '');
-    setBiografia(perfilQuery.data.perfil.biografia ?? '');
-    setFotoUrl(perfilQuery.data.perfil.foto_url);
-  }, [perfilQuery.data]);
+  if (perfilQuery.isLoading) {
+    return (
+      <ThemedView style={styles.loading}>
+        <ActivityIndicator color={theme.primary} />
+      </ThemedView>
+    );
+  }
+
+  if (perfilQuery.isError || !perfilQuery.data) {
+    return (
+      <ThemedView style={[styles.loading, styles.erroContainer]}>
+        <ThemedText themeColor="statusDanger" style={styles.centerText}>
+          {mensagemErro(perfilQuery.error as Error, 'carregar seu perfil')}
+        </ThemedText>
+        <Pressable style={[styles.button, { backgroundColor: theme.primary }]} onPress={() => perfilQuery.refetch()}>
+          <ThemedText type="default" themeColor="background" style={styles.buttonText}>
+            Tentar novamente
+          </ThemedText>
+        </Pressable>
+      </ThemedView>
+    );
+  }
+
+  // key no id: se a query passar a devolver outro usuário (troca de conta no
+  // mesmo aparelho), o formulário remonta com os campos da conta certa em vez
+  // de manter o que já estava digitado.
+  return (
+    <FormularioPerfil
+      key={perfilQuery.data.usuarioId}
+      usuarioId={perfilQuery.data.usuarioId}
+      perfil={perfilQuery.data.perfil}
+    />
+  );
+}
+
+function FormularioPerfil({ usuarioId, perfil }: { usuarioId: string; perfil: Perfil }) {
+  const theme = useTheme();
+  const router = useRouter();
+  const queryClient = useQueryClient();
+
+  const [nome, setNome] = useState(perfil.nome_completo ?? '');
+  const [telefone, setTelefone] = useState(perfil.telefone ?? '');
+  const [biografia, setBiografia] = useState(perfil.biografia ?? '');
+  const [fotoUrl, setFotoUrl] = useState<string | null>(perfil.foto_url);
+  const [enviandoFoto, setEnviandoFoto] = useState(false);
+  const [salvando, setSalvando] = useState(false);
 
   const escolherFoto = async () => {
-    if (!usuarioId) return;
-
-    const permissao = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (permissao.status !== 'granted') {
-      Alert.alert('Permissão necessária', 'Precisamos de acesso às suas fotos para trocar o avatar.');
-      return;
-    }
-
-    const resultado = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ['images'],
-      allowsEditing: true,
-      aspect: [1, 1],
-      quality: 0.7,
-    });
-    if (resultado.canceled) return;
-
-    const asset = resultado.assets[0];
-    const extensao = asset.mimeType?.split('/')[1] ?? 'jpg';
-    const caminho = `${usuarioId}/avatar.${extensao}`;
-
     setEnviandoFoto(true);
     try {
-      const resposta = await fetch(asset.uri);
-      const arrayBuffer = await resposta.arrayBuffer();
-      const { error: erroUpload } = await supabase.storage
-        .from('avatars')
-        .upload(caminho, arrayBuffer, { contentType: asset.mimeType ?? 'image/jpeg', upsert: true });
-      if (erroUpload) throw erroUpload;
-
-      const { data: urlPublica } = supabase.storage.from('avatars').getPublicUrl(caminho);
-      const novaUrl = `${urlPublica.publicUrl}?t=${Date.now()}`;
-
-      const { error: erroPerfil } = await supabase
-        .from('profiles')
-        .update({ foto_url: novaUrl })
-        .eq('id', usuarioId);
-      if (erroPerfil) throw erroPerfil;
-
+      const novaUrl = await escolherEEnviarAvatar(usuarioId);
+      if (!novaUrl) return;
       setFotoUrl(novaUrl);
       queryClient.invalidateQueries({ queryKey: ['perfil-logado'] });
     } catch (erro) {
-      Alert.alert('Não foi possível enviar a foto', mensagemErro(erro as Error, 'enviar a foto'));
+      Alert.alert(
+        'Não foi possível trocar a foto',
+        erro instanceof ErroAvatar ? erro.message : mensagemErro(erro as Error, 'enviar a foto')
+      );
     } finally {
       setEnviandoFoto(false);
     }
   };
 
   const salvar = async () => {
-    if (!usuarioId) return;
     setSalvando(true);
     const { error } = await supabase
       .from('profiles')
@@ -133,34 +137,13 @@ export default function EditarPerfilScreen() {
     }
 
     queryClient.invalidateQueries({ queryKey: ['perfil-logado'] });
+    queryClient.invalidateQueries({ queryKey: ['editar-perfil'] });
     router.back();
   };
 
-  if (perfilQuery.isLoading) {
-    return (
-      <ThemedView style={styles.loading}>
-        <ActivityIndicator color={theme.primary} />
-      </ThemedView>
-    );
-  }
-
-  if (perfilQuery.isError) {
-    return (
-      <ThemedView style={[styles.loading, styles.erroContainer]}>
-        <ThemedText themeColor="statusDanger" style={styles.centerText}>
-          {mensagemErro(perfilQuery.error as Error, 'carregar seu perfil')}
-        </ThemedText>
-        <Pressable style={[styles.button, { backgroundColor: theme.primary }]} onPress={() => perfilQuery.refetch()}>
-          <ThemedText type="default" themeColor="background" style={styles.buttonText}>
-            Tentar novamente
-          </ThemedText>
-        </Pressable>
-      </ThemedView>
-    );
-  }
-
   return (
     <ThemedView style={styles.container}>
+      <StatusBar style="light" />
       <View style={[styles.hero, { backgroundColor: theme.primary }]}>
         <SafeAreaView edges={['top']} style={styles.heroContent}>
           <Pressable style={[styles.backButton, { backgroundColor: 'rgba(255,255,255,0.25)' }]} onPress={() => router.back()}>

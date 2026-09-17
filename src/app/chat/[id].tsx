@@ -1,6 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import { StatusBar } from 'expo-status-bar';
 import { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -287,6 +288,9 @@ export default function ChatConversaScreen() {
 
   return (
     <ThemedView style={styles.container}>
+      {/* Esta tela é a única sem hero azul: o cabeçalho usa a cor de fundo do
+          tema, então o texto da status bar acompanha o tema, não o contrário. */}
+      <StatusBar style="auto" />
       <View style={[styles.hero, { backgroundColor: theme.background, borderBottomColor: theme.backgroundSelected }]}>
         <SafeAreaView edges={['top']} style={styles.heroContent}>
           <Pressable style={styles.backButton} onPress={() => router.back()}>

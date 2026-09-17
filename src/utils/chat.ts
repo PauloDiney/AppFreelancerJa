@@ -26,14 +26,14 @@ export async function abrirConversa(bicoId: string, meuId: string, outroId: stri
   return nova.id as string;
 }
 
-export async function contarNaoLidas(usuarioId: string) {
-  const { count, error } = await supabase
-    .from('mensagens')
-    .select('id', { count: 'exact', head: true })
-    .is('lido_em', null)
-    .neq('remetente_id', usuarioId);
+// Contagem feita no banco (migration 0016) e não com um count() daqui: a RLS
+// de mensagens filtra por participação na conversa, mas não conhece as colunas
+// oculta_participante_*, então contar direto aqui somava conversas que a lista
+// de /chat já não mostra — o badge da tab bar nunca batia com a tela.
+export async function contarNaoLidas() {
+  const { data, error } = await supabase.rpc('contar_mensagens_nao_lidas');
   if (error) throw error;
-  return count ?? 0;
+  return (data as number | null) ?? 0;
 }
 
 export function formatarHoraMensagem(dataIso: string) {

@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { useState } from 'react';
+import { StatusBar } from 'expo-status-bar';
 import { Pressable, ScrollView, StyleSheet, Switch, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -8,8 +8,9 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Spacing, ThemeColor } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
-import { supabase } from '@/services/supabaseClient';
+import { usePreferenciaNotificacoes } from '@/stores/notificacoes-store';
 import { PreferenciaTema, usePreferenciaTema } from '@/stores/theme-store';
+import { encerrarSessao } from '@/utils/sessao';
 
 const TEMAS: { variante: PreferenciaTema; label: string }[] = [
   { variante: 'claro', label: 'Claro' },
@@ -22,20 +23,18 @@ export default function ConfiguracoesScreen() {
   const router = useRouter();
   const { preferencia, definirPreferencia } = usePreferenciaTema();
 
-  // Estado só local, não persiste em lugar nenhum e não tem efeito real
-  // ainda — "Notificações", "Identidade verificada", "Alterar senha",
-  // "Verificação em duas etapas" e "Denúncias e bloqueios" são placeholders
-  // de UI. Só a preferência de tema (acima) é de verdade, via theme-store.
-  const [notificacoesAtivas, setNotificacoesAtivas] = useState(true);
-  const [duasEtapas, setDuasEtapas] = useState(false);
+  // Liga/desliga o registro do token de push de verdade (ver use-push-token):
+  // antes era um useState solto que voltava ao valor inicial ao sair da tela.
+  const { ativas: notificacoesAtivas, definirAtivas: setNotificacoesAtivas } = usePreferenciaNotificacoes();
 
   const sair = async () => {
-    await supabase.auth.signOut();
+    await encerrarSessao();
     router.replace('/login');
   };
 
   return (
     <ThemedView type="backgroundElement" style={styles.container}>
+      <StatusBar style="auto" />
       <SafeAreaView edges={['top']} style={styles.header}>
         <Pressable style={[styles.backButton, { backgroundColor: theme.background }]} onPress={() => router.back()}>
           <Ionicons name="chevron-back" size={20} color={theme.text} />
@@ -87,34 +86,13 @@ export default function ConfiguracoesScreen() {
           />
         </View>
 
-        <View style={styles.field}>
-          <ThemedText type="small" themeColor="textSecondary">
-            SEGURANÇA
-          </ThemedText>
-
-          <View style={[styles.row, { backgroundColor: theme.background, borderColor: theme.backgroundSelected }]}>
-            <View style={[styles.rowIcone, { backgroundColor: theme.backgroundElement }]}>
-              <Ionicons name="checkmark" size={18} color={theme.statusSuccess} />
-            </View>
-            <View style={styles.flex1}>
-              <ThemedText type="default">Identidade verificada</ThemedText>
-              <ThemedText type="small" themeColor="statusSuccess">
-                ✓ Documento confirmado
-              </ThemedText>
-            </View>
-          </View>
-
-          <ConfigRow icone="lock-closed-outline" cor="textSecondary" label="Alterar senha" />
-          <ConfigRow
-            icone="shield-checkmark-outline"
-            cor="textSecondary"
-            label="Verificação em duas etapas"
-            toggle
-            valor={duasEtapas}
-            aoAlternar={setDuasEtapas}
-          />
-          <ConfigRow icone="add-circle-outline" cor="statusDanger" label="Denúncias e bloqueios" labelColor="statusDanger" />
-        </View>
+        {/* A seção "SEGURANÇA" saiu inteira: mostrava "Identidade verificada ✓
+            Documento confirmado" fixo pra toda conta, sem existir nenhuma
+            verificação de identidade no sistema — num app onde as pessoas se
+            encontram pessoalmente, esse selo falso é risco, não enfeite. Junto
+            saíram "Alterar senha", "Verificação em duas etapas" e "Denúncias e
+            bloqueios", que não tinham ação nenhuma por trás. Voltam quando os
+            fluxos existirem de verdade. */}
 
         <Pressable style={styles.sairButton} onPress={sair}>
           <ThemedText type="smallBold" themeColor="statusDanger">

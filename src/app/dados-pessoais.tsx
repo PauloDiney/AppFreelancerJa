@@ -1,9 +1,9 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Image } from 'expo-image';
-import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { StatusBar } from 'expo-status-bar';
+import { useState } from 'react';
 import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -12,6 +12,7 @@ import { ThemedView } from '@/components/themed-view';
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { supabase } from '@/services/supabaseClient';
+import { ErroAvatar, escolherEEnviarAvatar } from '@/utils/avatar';
 import {
   LABEL_SEXO,
   Sexo,
@@ -33,7 +34,6 @@ type PerfilPublico = {
   nome_completo: string | null;
   foto_url: string | null;
   biografia: string | null;
-  email: string | null;
 };
 
 type DadosPrivados = {
@@ -58,30 +58,12 @@ const OPCOES_SEXO: Sexo[] = ['masculino', 'feminino', 'outro', 'prefiro_nao_dize
 // meus_dados_pessoais (migration 0012). Editar-perfil continua existindo
 // como o atalho rápido (foto + nome + telefone + bio) a partir do próprio
 // perfil; esta tela é o cadastro completo.
+// Mesma divisão de editar-perfil: esta metade busca, e <FormularioDados> só é
+// montado com os dados em mãos, inicializando cada campo direto no useState —
+// em vez de copiar a resposta pra dentro do estado num useEffect (cascata de
+// renders, apontada pela regra react-hooks/set-state-in-effect).
 export default function DadosPessoaisScreen() {
   const theme = useTheme();
-  const router = useRouter();
-  const queryClient = useQueryClient();
-
-  const [usuarioId, setUsuarioId] = useState<string | null>(null);
-  const [fotoUrl, setFotoUrl] = useState<string | null>(null);
-  const [enviandoFoto, setEnviandoFoto] = useState(false);
-  const [salvando, setSalvando] = useState(false);
-
-  const [tipoCadastro, setTipoCadastro] = useState<TipoCadastro>('pessoa_fisica');
-  const [nome, setNome] = useState('');
-  const [cpf, setCpf] = useState('');
-  const [cnpj, setCnpj] = useState('');
-  const [nascimento, setNascimento] = useState('');
-  const [sexo, setSexo] = useState<Sexo | null>(null);
-  const [telefone, setTelefone] = useState('');
-  const [email, setEmail] = useState('');
-  const [cep, setCep] = useState('');
-  const [cidade, setCidade] = useState('');
-  const [uf, setUf] = useState('');
-  const [bairro, setBairro] = useState('');
-  const [biografia, setBiografia] = useState('');
-  const [buscandoCep, setBuscandoCep] = useState(false);
 
   const dadosQuery = useQuery({
     queryKey: ['dados-pessoais'],
@@ -90,8 +72,12 @@ export default function DadosPessoaisScreen() {
       const { data: sessao } = await supabase.auth.getUser();
       if (!sessao.user) throw new Error('Sessão expirada.');
 
+      // O e-mail vem de auth.getUser() (que esta tela já chamava acima) e não
+      // mais de um select em profiles: a coluna deixou de ser legível por
+      // authenticated na migration 0015, porque com o grant antigo qualquer
+      // conta rodava "select id, email from profiles" e levava a base inteira.
       const [{ data: publico, error: erroPublico }, { data: privado, error: erroPrivado }] = await Promise.all([
-        supabase.from('profiles').select('nome_completo, foto_url, biografia, email').eq('id', sessao.user.id).single(),
+        supabase.from('profiles').select('nome_completo, foto_url, biografia').eq('id', sessao.user.id).single(),
         supabase.rpc('meus_dados_pessoais').single(),
       ]);
       if (erroPublico) throw erroPublico;
@@ -99,74 +85,83 @@ export default function DadosPessoaisScreen() {
 
       return {
         usuarioId: sessao.user.id,
+        email: sessao.user.email ?? '',
         publico: publico as PerfilPublico,
         privado: privado as DadosPrivados,
       };
     },
   });
 
-  useEffect(() => {
-    if (!dadosQuery.data) return;
-    const { usuarioId, publico, privado } = dadosQuery.data;
+  if (dadosQuery.isLoading) {
+    return (
+      <ThemedView style={styles.loading}>
+        <ActivityIndicator color={theme.primary} />
+      </ThemedView>
+    );
+  }
 
-    setUsuarioId(usuarioId);
-    setFotoUrl(publico.foto_url);
-    setNome(publico.nome_completo ?? '');
-    setBiografia(publico.biografia ?? '');
-    setEmail(publico.email ?? '');
+  if (dadosQuery.isError || !dadosQuery.data) {
+    return (
+      <ThemedView style={[styles.loading, styles.erroContainer]}>
+        <ThemedText themeColor="statusDanger" style={styles.centerText}>
+          {mensagemErro(dadosQuery.error as Error, 'carregar seus dados')}
+        </ThemedText>
+        <Pressable style={[styles.button, { backgroundColor: theme.primary }]} onPress={() => dadosQuery.refetch()}>
+          <ThemedText type="default" themeColor="background" style={styles.buttonText}>
+            Tentar novamente
+          </ThemedText>
+        </Pressable>
+      </ThemedView>
+    );
+  }
 
-    setTipoCadastro(privado.tipo_cadastro);
-    setCpf(privado.cpf ? mascararCPF(privado.cpf) : '');
-    setCnpj(privado.cnpj ? mascararCNPJ(privado.cnpj) : '');
-    setNascimento(isoParaDataBR(privado.data_nascimento));
-    setSexo(privado.sexo);
-    setTelefone(privado.telefone ?? '');
-    setCep(privado.cep ? mascararCEP(privado.cep) : '');
-    setCidade(privado.cidade ?? '');
-    setUf(privado.uf ?? '');
-    setBairro(privado.bairro ?? '');
-  }, [dadosQuery.data]);
+  return <FormularioDados key={dadosQuery.data.usuarioId} dados={dadosQuery.data} />;
+}
+
+type DadosCarregados = {
+  usuarioId: string;
+  email: string;
+  publico: PerfilPublico;
+  privado: DadosPrivados;
+};
+
+function FormularioDados({ dados }: { dados: DadosCarregados }) {
+  const theme = useTheme();
+  const router = useRouter();
+  const queryClient = useQueryClient();
+
+  const { usuarioId, email, publico, privado } = dados;
+
+  const [fotoUrl, setFotoUrl] = useState<string | null>(publico.foto_url);
+  const [enviandoFoto, setEnviandoFoto] = useState(false);
+  const [salvando, setSalvando] = useState(false);
+
+  const [tipoCadastro, setTipoCadastro] = useState<TipoCadastro>(privado.tipo_cadastro);
+  const [nome, setNome] = useState(publico.nome_completo ?? '');
+  const [cpf, setCpf] = useState(privado.cpf ? mascararCPF(privado.cpf) : '');
+  const [cnpj, setCnpj] = useState(privado.cnpj ? mascararCNPJ(privado.cnpj) : '');
+  const [nascimento, setNascimento] = useState(isoParaDataBR(privado.data_nascimento));
+  const [sexo, setSexo] = useState<Sexo | null>(privado.sexo);
+  const [telefone, setTelefone] = useState(privado.telefone ?? '');
+  const [cep, setCep] = useState(privado.cep ? mascararCEP(privado.cep) : '');
+  const [cidade, setCidade] = useState(privado.cidade ?? '');
+  const [uf, setUf] = useState(privado.uf ?? '');
+  const [bairro, setBairro] = useState(privado.bairro ?? '');
+  const [biografia, setBiografia] = useState(publico.biografia ?? '');
+  const [buscandoCep, setBuscandoCep] = useState(false);
 
   const escolherFoto = async () => {
-    if (!usuarioId) return;
-
-    const permissao = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (permissao.status !== 'granted') {
-      Alert.alert('Permissão necessária', 'Precisamos de acesso às suas fotos para trocar o avatar.');
-      return;
-    }
-
-    const resultado = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ['images'],
-      allowsEditing: true,
-      aspect: [1, 1],
-      quality: 0.7,
-    });
-    if (resultado.canceled) return;
-
-    const asset = resultado.assets[0];
-    const extensao = asset.mimeType?.split('/')[1] ?? 'jpg';
-    const caminho = `${usuarioId}/avatar.${extensao}`;
-
     setEnviandoFoto(true);
     try {
-      const resposta = await fetch(asset.uri);
-      const arrayBuffer = await resposta.arrayBuffer();
-      const { error: erroUpload } = await supabase.storage
-        .from('avatars')
-        .upload(caminho, arrayBuffer, { contentType: asset.mimeType ?? 'image/jpeg', upsert: true });
-      if (erroUpload) throw erroUpload;
-
-      const { data: urlPublica } = supabase.storage.from('avatars').getPublicUrl(caminho);
-      const novaUrl = `${urlPublica.publicUrl}?t=${Date.now()}`;
-
-      const { error: erroPerfil } = await supabase.from('profiles').update({ foto_url: novaUrl }).eq('id', usuarioId);
-      if (erroPerfil) throw erroPerfil;
-
+      const novaUrl = await escolherEEnviarAvatar(usuarioId);
+      if (!novaUrl) return;
       setFotoUrl(novaUrl);
       queryClient.invalidateQueries({ queryKey: ['perfil-logado'] });
     } catch (erro) {
-      Alert.alert('Não foi possível enviar a foto', mensagemErro(erro as Error, 'enviar a foto'));
+      Alert.alert(
+        'Não foi possível trocar a foto',
+        erro instanceof ErroAvatar ? erro.message : mensagemErro(erro as Error, 'enviar a foto')
+      );
     } finally {
       setEnviandoFoto(false);
     }
@@ -197,8 +192,6 @@ export default function DadosPessoaisScreen() {
   const telefoneValido = somenteDigitos(telefone).length === 11;
 
   const salvar = async () => {
-    if (!usuarioId) return;
-
     if (tipoCadastro === 'pessoa_fisica' && cpf.trim() && !validarCPF(cpf)) {
       Alert.alert('CPF inválido', 'Confira os números digitados.');
       return;
@@ -247,31 +240,9 @@ export default function DadosPessoaisScreen() {
     router.back();
   };
 
-  if (dadosQuery.isLoading) {
-    return (
-      <ThemedView style={styles.loading}>
-        <ActivityIndicator color={theme.primary} />
-      </ThemedView>
-    );
-  }
-
-  if (dadosQuery.isError) {
-    return (
-      <ThemedView style={[styles.loading, styles.erroContainer]}>
-        <ThemedText themeColor="statusDanger" style={styles.centerText}>
-          {mensagemErro(dadosQuery.error as Error, 'carregar seus dados')}
-        </ThemedText>
-        <Pressable style={[styles.button, { backgroundColor: theme.primary }]} onPress={() => dadosQuery.refetch()}>
-          <ThemedText type="default" themeColor="background" style={styles.buttonText}>
-            Tentar novamente
-          </ThemedText>
-        </Pressable>
-      </ThemedView>
-    );
-  }
-
   return (
     <ThemedView type="backgroundElement" style={styles.container}>
+      <StatusBar style="auto" />
       <SafeAreaView edges={['top']} style={styles.header}>
         <Pressable style={[styles.backButton, { backgroundColor: theme.background }]} onPress={() => router.back()}>
           <Ionicons name="chevron-back" size={20} color={theme.text} />
@@ -363,10 +334,13 @@ export default function DadosPessoaisScreen() {
                 style={[styles.input, styles.flex1, { color: theme.text }]}
               />
               {cpfValido && (
+                // "Formato válido" e não "Verificado": o dígito verificador só
+                // prova que o número é bem-formado, não que pertence a quem
+                // digitou. Não existe nenhuma checagem de identidade no app.
                 <View style={styles.verificadoBadge}>
-                  <Ionicons name="checkmark-circle" size={16} color={theme.statusSuccess} />
-                  <ThemedText type="small" themeColor="statusSuccess">
-                    Verificado
+                  <Ionicons name="checkmark-circle" size={16} color={theme.textSecondary} />
+                  <ThemedText type="small" themeColor="textSecondary">
+                    Formato válido
                   </ThemedText>
                 </View>
               )}
@@ -388,10 +362,13 @@ export default function DadosPessoaisScreen() {
                 style={[styles.input, styles.flex1, { color: theme.text }]}
               />
               {cnpjValido && (
+                // "Formato válido" e não "Verificado": o dígito verificador só
+                // prova que o número é bem-formado, não que pertence a quem
+                // digitou. Não existe nenhuma checagem de identidade no app.
                 <View style={styles.verificadoBadge}>
-                  <Ionicons name="checkmark-circle" size={16} color={theme.statusSuccess} />
-                  <ThemedText type="small" themeColor="statusSuccess">
-                    Verificado
+                  <Ionicons name="checkmark-circle" size={16} color={theme.textSecondary} />
+                  <ThemedText type="small" themeColor="textSecondary">
+                    Formato válido
                   </ThemedText>
                 </View>
               )}

@@ -1,6 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useQuery } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
+import { StatusBar } from 'expo-status-bar';
 import { useMemo, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -9,6 +10,7 @@ import { BottomTabBar } from '@/components/bottom-tab-bar';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Spacing } from '@/constants/theme';
+import { useBicosAbertos } from '@/hooks/use-bicos-abertos';
 import { useTheme } from '@/hooks/use-theme';
 import { supabase } from '@/services/supabaseClient';
 import { AVATAR_PALETTE, calcularBadge, formatarValor, iniciais, tempoRelativo } from '@/utils/bico';
@@ -16,21 +18,6 @@ import { AVATAR_PALETTE, calcularBadge, formatarValor, iniciais, tempoRelativo }
 type Categoria = {
   id: number;
   nome: string;
-};
-
-type Bico = {
-  id: string;
-  titulo: string;
-  valor_oferecido: number | null;
-  endereco_texto: string | null;
-  data_hora_desejada: string | null;
-  criado_em: string;
-  categoria_id: number | null;
-  criado_por: string;
-  profiles: {
-    nome_completo: string | null;
-    nota_media_como_prestador: number | null;
-  } | null;
 };
 
 // Feed inicial (tab "Início"): lista os 15 bicos abertos mais recentes,
@@ -67,21 +54,7 @@ export default function HomeScreen() {
     },
   });
 
-  const bicosQuery = useQuery({
-    queryKey: ['bicos-destaque'],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('bicos')
-        .select(
-          'id, titulo, valor_oferecido, endereco_texto, data_hora_desejada, criado_em, categoria_id, criado_por, profiles!bicos_criado_por_fkey(nome_completo, nota_media_como_prestador)'
-        )
-        .eq('status', 'aberto')
-        .order('criado_em', { ascending: false })
-        .limit(15);
-      if (error) throw error;
-      return data as unknown as Bico[];
-    },
-  });
+  const bicosQuery = useBicosAbertos(15);
 
   const bicosFiltrados = useMemo(() => {
     const lista = bicosQuery.data ?? [];
@@ -97,6 +70,7 @@ export default function HomeScreen() {
 
   return (
     <ThemedView style={styles.container}>
+      <StatusBar style="light" />
       <View style={[styles.hero, { backgroundColor: theme.primary }]}>
         <SafeAreaView edges={['top']} style={styles.heroContent}>
           <View style={styles.heroTopRow}>
@@ -169,9 +143,11 @@ export default function HomeScreen() {
             <ThemedText type="subtitle" style={styles.sectionTitle}>
               Em destaque
             </ThemedText>
-            <ThemedText type="smallBold" themeColor="primary">
-              Ver tudo
-            </ThemedText>
+            <Pressable onPress={() => router.push('/buscar')}>
+              <ThemedText type="smallBold" themeColor="primary">
+                Ver tudo
+              </ThemedText>
+            </Pressable>
           </View>
 
           {bicosFiltrados.length === 0 ? (
@@ -213,7 +189,7 @@ export default function HomeScreen() {
                       </ThemedText>
                       <ThemedText type="small" themeColor={destaque ? 'backgroundSelected' : 'textSecondary'}>
                         {bico.profiles?.nome_completo ?? 'Alguém'} · ★{' '}
-                        {bico.profiles?.nota_media_como_prestador?.toFixed(1) ?? '—'}
+                        {bico.profiles?.nota_media_como_contratante?.toFixed(1) ?? '—'}
                       </ThemedText>
                     </View>
                     {badge && (

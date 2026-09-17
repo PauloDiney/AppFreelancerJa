@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "estou-dentro",
+    "name": "Estou Dentro",
     "slug": "estou-dentro",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -8,6 +8,7 @@
     "scheme": "estoudentro",
     "userInterfaceStyle": "automatic",
     "ios": {
+      "bundleIdentifier": "com.paulodiney.estoudentro",
       "icon": "./assets/expo.icon"
     },
     "android": {
@@ -33,7 +34,29 @@
           "image": "./assets/images/splash-icon.png",
           "imageWidth": 76
         }
-      ]
+      ],
+      "expo-image",
+      "expo-status-bar",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "O Estou Dentro precisa acessar suas fotos para você escolher a foto do seu perfil."
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "O Estou Dentro usa sua localização para mostrar os bicos que você publica para quem está por perto."
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "color": "#1E5FCC",
+          "defaultChannel": "default"
+        }
+      ],
+      "expo-font"
     ],
     "experiments": {
       "typedRoutes": true,
