@@ -1,6 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
+import { StatusBar } from 'expo-status-bar';
 import { useMemo, useState } from 'react';
 import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import Swipeable from 'react-native-gesture-handler/ReanimatedSwipeable';
@@ -174,6 +175,7 @@ export default function ChatListaScreen() {
 
   return (
     <ThemedView style={styles.container}>
+      <StatusBar style="light" />
       <View style={[styles.hero, { backgroundColor: theme.primary }]}>
         <SafeAreaView edges={['top']} style={styles.heroContent}>
           <View style={styles.heroTopRow}>

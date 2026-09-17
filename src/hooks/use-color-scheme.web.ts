@@ -1,21 +1,22 @@
-import { useEffect, useState } from 'react';
+import { useSyncExternalStore } from 'react';
 import { useColorScheme as useRNColorScheme } from 'react-native';
 
-/**
- * To support static rendering, this value needs to be re-calculated on the client side for web
- */
+// No web com renderização estática o HTML é gerado no servidor, onde não existe
+// preferência de tema — então o primeiro render precisa ser 'light' nos dois
+// lados, ou o React acusa divergência de hidratação.
+//
+// useSyncExternalStore é a forma que o React documenta pra isso: getSnapshot
+// devolve true (cliente) e getServerSnapshot devolve false (servidor/primeiro
+// render). A versão anterior usava useState + useEffect, que faz exatamente a
+// mesma coisa às custas de um render em cascata — e é o que a regra
+// react-hooks/set-state-in-effect aponta.
+const inscrever = () => () => {};
+const noCliente = () => true;
+const noServidor = () => false;
+
 export function useColorScheme() {
-  const [hasHydrated, setHasHydrated] = useState(false);
-
-  useEffect(() => {
-    setHasHydrated(true);
-  }, []);
-
+  const hidratado = useSyncExternalStore(inscrever, noCliente, noServidor);
   const colorScheme = useRNColorScheme();
 
-  if (hasHydrated) {
-    return colorScheme;
-  }
-
-  return 'light';
+  return hidratado ? colorScheme : 'light';
 }

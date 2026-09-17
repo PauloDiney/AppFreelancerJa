@@ -1,11 +1,11 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useQuery } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
+import { StatusBar } from 'expo-status-bar';
 import { useMemo, useState } from 'react';
 import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { BottomTabBar } from '@/components/bottom-tab-bar';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Spacing } from '@/constants/theme';
@@ -122,6 +122,7 @@ export default function HistoricoBicosScreen() {
 
   return (
     <ThemedView style={styles.container}>
+      <StatusBar style="light" />
       <View style={[styles.hero, { backgroundColor: theme.primary }]}>
         <SafeAreaView edges={['top']} style={styles.heroContent}>
           <View style={styles.heroTopRow}>
@@ -311,8 +312,6 @@ export default function HistoricoBicosScreen() {
           ))}
         </ScrollView>
       )}
-
-      <BottomTabBar ativo="perfil" />
     </ThemedView>
   );
 }

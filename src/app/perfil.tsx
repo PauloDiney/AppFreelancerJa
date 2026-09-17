@@ -2,6 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useQuery } from '@tanstack/react-query';
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
+import { StatusBar } from 'expo-status-bar';
 import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -16,6 +17,7 @@ import { supabase } from '@/services/supabaseClient';
 import { formatarGanhos, formatarQuando, formatarValor } from '@/utils/bico';
 import { abrirConversa } from '@/utils/chat';
 import { mensagemErro } from '@/utils/erros';
+import { encerrarSessao } from '@/utils/sessao';
 
 type Perfil = {
   nome_completo: string | null;
@@ -126,7 +128,7 @@ export default function PerfilScreen() {
   };
 
   const sair = async () => {
-    await supabase.auth.signOut();
+    await encerrarSessao();
     router.replace('/login');
   };
 
@@ -144,6 +146,7 @@ export default function PerfilScreen() {
 
   return (
     <ThemedView style={styles.container}>
+      <StatusBar style="light" />
       <View style={[styles.hero, { backgroundColor: theme.primary }]}>
         <SafeAreaView edges={['top']} style={styles.heroContent}>
           <View style={styles.heroTopRow}>

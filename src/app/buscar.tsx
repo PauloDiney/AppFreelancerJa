@@ -1,5 +1,7 @@
 import { FontAwesome5, Ionicons } from '@expo/vector-icons';
 import { useQuery } from '@tanstack/react-query';
+import { useRouter } from 'expo-router';
+import { StatusBar } from 'expo-status-bar';
 import { useMemo, useState } from 'react';
 import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -8,6 +10,7 @@ import { BottomTabBar } from '@/components/bottom-tab-bar';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Spacing } from '@/constants/theme';
+import { useBicosAbertos } from '@/hooks/use-bicos-abertos';
 import { useTheme } from '@/hooks/use-theme';
 import { supabase } from '@/services/supabaseClient';
 import { formatarValor, iniciais, tempoRelativo } from '@/utils/bico';
@@ -16,19 +19,6 @@ type Categoria = {
   id: number;
   nome: string;
   icone: string | null;
-};
-
-type Bico = {
-  id: string;
-  titulo: string;
-  valor_oferecido: number | null;
-  endereco_texto: string | null;
-  criado_em: string;
-  categoria_id: number | null;
-  profiles: {
-    nome_completo: string | null;
-    nota_media_como_prestador: number | null;
-  } | null;
 };
 
 type Ordenacao = 'recentes' | 'menor' | 'maior';
@@ -54,6 +44,7 @@ const COR_TUDO = { bg: '#E8E8E8', cor: '#5B6472' };
 // servidor. Botão de "Filtros avançados" ainda não foi implementado.
 export default function BuscarScreen() {
   const theme = useTheme();
+  const router = useRouter();
   const [busca, setBusca] = useState('');
   const [categoriaSelecionada, setCategoriaSelecionada] = useState<number | null>(null);
   const [ordenacao, setOrdenacao] = useState<Ordenacao>('recentes');
@@ -67,21 +58,7 @@ export default function BuscarScreen() {
     },
   });
 
-  const bicosQuery = useQuery({
-    queryKey: ['bicos-destaque'],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('bicos')
-        .select(
-          'id, titulo, valor_oferecido, endereco_texto, criado_em, categoria_id, profiles!bicos_criado_por_fkey(nome_completo, nota_media_como_prestador)'
-        )
-        .eq('status', 'aberto')
-        .order('criado_em', { ascending: false })
-        .limit(30);
-      if (error) throw error;
-      return data as unknown as Bico[];
-    },
-  });
+  const bicosQuery = useBicosAbertos(30);
 
   const resultados = useMemo(() => {
     const lista = (bicosQuery.data ?? []).filter((bico) => {
@@ -105,6 +82,7 @@ export default function BuscarScreen() {
 
   return (
     <ThemedView style={styles.container}>
+      <StatusBar style="light" />
       <View style={[styles.hero, { backgroundColor: theme.primary }]}>
         <SafeAreaView edges={['top']} style={styles.heroContent}>
           <ThemedText type="subtitle" themeColor="background" style={styles.heroTitle}>
@@ -184,7 +162,11 @@ export default function BuscarScreen() {
             resultados.map((bico, index) => {
               const paleta = CATEGORIA_CORES[index % CATEGORIA_CORES.length];
               return (
-                <View key={bico.id} style={[styles.card, { backgroundColor: theme.background, borderColor: theme.backgroundSelected }]}>
+                <Pressable
+                  key={bico.id}
+                  style={[styles.card, { backgroundColor: theme.background, borderColor: theme.backgroundSelected }]}
+                  onPress={() => router.push({ pathname: '/bico/[id]', params: { id: bico.id } })}
+                >
                   <View style={[styles.avatar, { backgroundColor: paleta.bg }]}>
                     <ThemedText type="smallBold" style={{ color: paleta.cor }}>
                       {iniciais(bico.profiles?.nome_completo ?? null)}
@@ -195,14 +177,15 @@ export default function BuscarScreen() {
                       {bico.titulo}
                     </ThemedText>
                     <ThemedText type="small" themeColor="textSecondary" numberOfLines={1}>
-                      {bico.profiles?.nome_completo ?? 'Alguém'} · ★ {bico.profiles?.nota_media_como_prestador?.toFixed(1) ?? '—'}
+                      {bico.profiles?.nome_completo ?? 'Alguém'} · ★{' '}
+                      {bico.profiles?.nota_media_como_contratante?.toFixed(1) ?? '—'}
                     </ThemedText>
                     <ThemedText type="small" themeColor="textSecondary" numberOfLines={1}>
                       {bico.endereco_texto ?? 'Endereço a combinar'} · {tempoRelativo(bico.criado_em)}
                     </ThemedText>
                   </View>
                   <ThemedText type="smallBold">{formatarValor(bico.valor_oferecido)}</ThemedText>
-                </View>
+                </Pressable>
               );
             })
           )}

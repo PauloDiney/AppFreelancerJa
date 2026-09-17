@@ -1,6 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
+import { StatusBar } from 'expo-status-bar';
 import { useState } from 'react';
 import { ActivityIndicator, Alert, Modal, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -166,6 +167,7 @@ export default function MetodosPagamentoScreen() {
 
   return (
     <ThemedView type="backgroundElement" style={styles.container}>
+      <StatusBar style="auto" />
       <SafeAreaView edges={['top']} style={styles.header}>
         <Pressable style={[styles.backButton, { backgroundColor: theme.background }]} onPress={() => router.back()}>
           <Ionicons name="chevron-back" size={20} color={theme.text} />
@@ -180,8 +182,12 @@ export default function MetodosPagamentoScreen() {
           <ThemedText type="small" themeColor="textSecondary">
             PARA RECEBER
           </ThemedText>
+          {/* Dizia "Sua chave Pix aparece pra quem for te pagar", o que não é
+              verdade: a RLS de chaves_pix é auth.uid() = usuario_id, então
+              ninguém além do dono consegue ler a chave. Até existir repasse
+              automático, a chave é só um lembrete pra copiar e mandar no chat. */}
           <ThemedText type="small" themeColor="textSecondary">
-            Sua chave Pix aparece pra quem for te pagar.
+            Ficam salvas aqui pra você copiar e enviar no chat na hora de receber.
           </ThemedText>
 
           {chavesQuery.isLoading ? (

@@ -1,6 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import { StatusBar } from 'expo-status-bar';
 import { useState } from 'react';
 import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -114,7 +115,7 @@ export default function BicoDetalheScreen() {
     queryClient.invalidateQueries({ queryKey: ['bico', id] });
     queryClient.invalidateQueries({ queryKey: ['candidaturas', id] });
     queryClient.invalidateQueries({ queryKey: ['minha-candidatura', id, usuarioId] });
-    queryClient.invalidateQueries({ queryKey: ['bicos-destaque'] });
+    queryClient.invalidateQueries({ queryKey: ['bicos-abertos'] });
   };
 
   const escolherCandidato = async (candidatoId: string) => {
@@ -156,6 +157,34 @@ export default function BicoDetalheScreen() {
     }
   };
 
+  // Único caso de cancelamento sem ambiguidade: o dono desiste enquanto o bico
+  // ainda está "aberto" e ninguém foi escolhido. A transição aberto→cancelado
+  // já era permitida pelo trigger validar_transicao_bico (migration 0010), mas
+  // nenhuma tela usava — um bico publicado por engano ficava no feed pra sempre.
+  // Cancelar depois de "em_andamento" é outro problema (envolve quem já estava
+  // contando com o serviço) e precisa de um fluxo de disputa próprio.
+  const cancelarBico = () => {
+    Alert.alert('Cancelar bico', 'Ele sai do feed e ninguém mais pode se candidatar. Não dá pra desfazer.', [
+      { text: 'Voltar', style: 'cancel' },
+      {
+        text: 'Cancelar bico',
+        style: 'destructive',
+        onPress: async () => {
+          setProcessando(true);
+          const { error } = await supabase.from('bicos').update({ status: 'cancelado' }).eq('id', id);
+          setProcessando(false);
+
+          if (error) {
+            Alert.alert('Não foi possível cancelar', mensagemErro(error, 'cancelar este bico'));
+            return;
+          }
+          atualizarTudo();
+          router.back();
+        },
+      },
+    ]);
+  };
+
   const candidatarSe = async () => {
     if (!usuarioId) return;
     setProcessando(true);
@@ -182,6 +211,7 @@ export default function BicoDetalheScreen() {
 
   return (
     <ThemedView style={styles.container}>
+      <StatusBar style="light" />
       <View style={[styles.hero, { backgroundColor: theme.primary }]}>
         <SafeAreaView edges={['top']} style={styles.heroContent}>
           <View style={styles.heroTopRow}>
@@ -335,6 +365,14 @@ export default function BicoDetalheScreen() {
                   </View>
                 );
               })
+            )}
+
+            {bico.status === 'aberto' && (
+              <Pressable style={styles.cancelarBotao} disabled={processando} onPress={cancelarBico}>
+                <ThemedText type="smallBold" themeColor="statusDanger">
+                  Cancelar este bico
+                </ThemedText>
+              </Pressable>
             )}
           </View>
         ) : (
@@ -513,6 +551,10 @@ const styles = StyleSheet.create({
     borderRadius: Spacing.two,
     paddingVertical: Spacing.three,
     alignItems: 'center',
+  },
+  cancelarBotao: {
+    alignItems: 'center',
+    paddingVertical: Spacing.three,
   },
   disabled: {
     opacity: 0.7,

@@ -1,11 +1,11 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useQuery } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
+import { StatusBar } from 'expo-status-bar';
 import { useMemo, useState } from 'react';
-import { ActivityIndicator, Linking, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { BottomTabBar } from '@/components/bottom-tab-bar';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Spacing, ThemeColor } from '@/constants/theme';
@@ -37,13 +37,12 @@ type BicoContratante = {
   profiles: { nome_completo: string | null } | null;
 };
 
-type Comprovante = {
-  bico_id: string;
-  arquivo_url: string;
-  observacao: string | null;
-  criado_em: string;
-};
-
+// Comprovantes saíram desta tela: a tabela comprovantes_pagamento existe e
+// tinha caminho de LEITURA aqui, mas nunca existiu tela de upload nem bucket
+// pra guardar o arquivo — nenhuma linha podia existir, então era UI morta
+// prometendo um recurso que não está pronto. Saiu junto o Linking.openURL de
+// uma URL vinda do banco sem validação de esquema. Volta inteiro (upload +
+// bucket + leitura) quando o fluxo de comprovante for construído.
 type ItemPagamento = {
   id: string;
   titulo: string;
@@ -52,21 +51,7 @@ type ItemPagamento = {
   valor: number | null;
   data: string;
   tipo: TipoPagamento;
-  comprovante: Comprovante | null;
 };
-
-const EXTENSOES_IMAGEM = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'heic'];
-
-function nomeArquivoComprovante(comprovante: Comprovante) {
-  if (comprovante.observacao) return comprovante.observacao;
-  const semQuery = comprovante.arquivo_url.split('?')[0];
-  return decodeURIComponent(semQuery.split('/').pop() ?? 'Comprovante');
-}
-
-function iconeComprovante(comprovante: Comprovante): keyof typeof Ionicons.glyphMap {
-  const extensao = comprovante.arquivo_url.split('?')[0].split('.').pop()?.toLowerCase() ?? '';
-  return EXTENSOES_IMAGEM.includes(extensao) ? 'image-outline' : 'document-text-outline';
-}
 
 function iconeTipo(tipo: TipoPagamento, formaPagamento: FormaPagamento): keyof typeof Ionicons.glyphMap {
   if (tipo === 'recebido') return formaPagamento === 'pix' ? 'arrow-down-circle' : 'cash';
@@ -121,33 +106,6 @@ export default function PagamentosScreen() {
     enabled: !!usuarioId,
   });
 
-  const bicoIds = useMemo(
-    () => [...(prestadorQuery.data ?? []).map((b) => b.id), ...(contratanteQuery.data ?? []).map((b) => b.id)],
-    [prestadorQuery.data, contratanteQuery.data]
-  );
-
-  const comprovantesQuery = useQuery({
-    queryKey: ['comprovantes-pagamentos', bicoIds],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('comprovantes_pagamento')
-        .select('bico_id, arquivo_url, observacao, criado_em')
-        .in('bico_id', bicoIds)
-        .order('criado_em', { ascending: false });
-      if (error) throw error;
-      return data as Comprovante[];
-    },
-    enabled: bicoIds.length > 0,
-  });
-
-  const comprovantePorBico = useMemo(() => {
-    const mapa = new Map<string, Comprovante>();
-    comprovantesQuery.data?.forEach((comprovante) => {
-      if (!mapa.has(comprovante.bico_id)) mapa.set(comprovante.bico_id, comprovante);
-    });
-    return mapa;
-  }, [comprovantesQuery.data]);
-
   const itens = useMemo<ItemPagamento[]>(() => {
     const doPrestador = (prestadorQuery.data ?? []).map((bico) => ({
       id: bico.id,
@@ -157,7 +115,6 @@ export default function PagamentosScreen() {
       valor: bico.valor_oferecido,
       data: bico.atualizado_em,
       tipo: (bico.status === 'em_andamento' ? 'aguardando' : 'recebido') as TipoPagamento,
-      comprovante: comprovantePorBico.get(bico.id) ?? null,
     }));
 
     const doContratante = (contratanteQuery.data ?? []).map((bico) => ({
@@ -168,11 +125,10 @@ export default function PagamentosScreen() {
       valor: bico.valor_oferecido,
       data: bico.atualizado_em,
       tipo: 'pago' as TipoPagamento,
-      comprovante: comprovantePorBico.get(bico.id) ?? null,
     }));
 
     return [...doPrestador, ...doContratante].sort((a, b) => new Date(b.data).getTime() - new Date(a.data).getTime());
-  }, [prestadorQuery.data, contratanteQuery.data, comprovantePorBico]);
+  }, [prestadorQuery.data, contratanteQuery.data]);
 
   const filtrados = useMemo(() => {
     if (filtro === 'todos') return itens;
@@ -207,10 +163,6 @@ export default function PagamentosScreen() {
     const mesLabel = agora.toLocaleDateString('pt-BR', { month: 'long' });
     return { recebidoMes, esteAno, aReceber, mesLabel };
   }, [itens]);
-
-  const abrirComprovante = (url: string) => {
-    Linking.openURL(url);
-  };
 
   const carregando = usuarioQuery.isLoading || prestadorQuery.isLoading || contratanteQuery.isLoading;
 
@@ -284,34 +236,13 @@ export default function PagamentosScreen() {
             </ThemedText>
           </View>
         </View>
-
-        {item.comprovante && (
-          <>
-            <View style={[styles.divisor, { borderTopColor: theme.backgroundSelected }]} />
-            <View style={styles.linhaComprovante}>
-              <Ionicons name={iconeComprovante(item.comprovante)} size={16} color={theme.textSecondary} />
-              <ThemedText type="small" themeColor="textSecondary" numberOfLines={1} style={styles.flex1}>
-                {nomeArquivoComprovante(item.comprovante)}
-              </ThemedText>
-              <Pressable onPress={() => abrirComprovante(item.comprovante!.arquivo_url)}>
-                <ThemedText type="smallBold" themeColor="primary">
-                  Ver
-                </ThemedText>
-              </Pressable>
-              <Pressable onPress={() => abrirComprovante(item.comprovante!.arquivo_url)}>
-                <ThemedText type="smallBold" themeColor="primary">
-                  Baixar
-                </ThemedText>
-              </Pressable>
-            </View>
-          </>
-        )}
       </Pressable>
     );
   };
 
   return (
     <ThemedView style={styles.container}>
+      <StatusBar style="light" />
       <View style={[styles.hero, { backgroundColor: theme.primary }]}>
         <SafeAreaView edges={['top']} style={styles.heroContent}>
           <View style={styles.heroTopRow}>
@@ -388,8 +319,6 @@ export default function PagamentosScreen() {
           {resto.map(renderItem)}
         </ScrollView>
       )}
-
-      <BottomTabBar ativo="perfil" />
     </ThemedView>
   );
 }
@@ -490,14 +419,6 @@ const styles = StyleSheet.create({
     gap: Spacing.two,
   },
   linhaTopo: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.two,
-  },
-  divisor: {
-    borderTopWidth: 1,
-  },
-  linhaComprovante: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.two,
