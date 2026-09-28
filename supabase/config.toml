@@ -1,0 +1,13 @@
+# Configuração da Supabase CLI. Só o que foge do padrão está aqui; o resto
+# (portas, versão do Postgres etc.) fica no default da CLI.
+#
+# project_id é só o nome dos containers locais (supabase start / supabase test
+# db) — não é o "ref" do projeto na nuvem.
+project_id = "estou-dentro"
+
+[functions.enviar-push]
+# A função é chamada só pelo banco (pg_net) e confere o header x-push-secret
+# no próprio código (ver index.ts). O verify_jwt do gateway aceitaria qualquer
+# JWT válido — inclusive a chave anon, que é pública — e o banco não tem JWT
+# nenhum pra mandar. Mesmo efeito de `supabase functions deploy --no-verify-jwt`.
+verify_jwt = false
