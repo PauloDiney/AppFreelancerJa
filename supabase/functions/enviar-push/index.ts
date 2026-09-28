@@ -1,9 +1,18 @@
-// Edge Function chamada pelos triggers de mensagens e candidaturas (migration
-// 0017). Busca os tokens do destinatário e manda pro serviço de push do Expo.
+// Edge Function chamada pelos triggers de mensagens e candidaturas (migrations
+// 0017/0018). Busca os tokens do destinatário e manda pro serviço de push do Expo.
 //
-// Deploy:
-//   supabase functions deploy enviar-push
-//   supabase secrets set EXPO_ACCESS_TOKEN=...   (ver comentário abaixo)
+// Deploy (ver "Notificações push" no README):
+//   supabase functions deploy enviar-push --no-verify-jwt
+//   supabase secrets set PUSH_WEBHOOK_SECRET=...   (o mesmo valor do Vault)
+//   supabase secrets set EXPO_ACCESS_TOKEN=...     (ver comentário abaixo)
+//
+// Quem pode chamar: SÓ o banco. Antes a função confiava no verify_jwt do
+// gateway, que aceita qualquer JWT válido — inclusive a chave anon, que vai
+// dentro do app. Qualquer pessoa conseguia mandar notificação com título e
+// texto arbitrários pra qualquer usuário (phishing com a cara do app). Agora
+// o chamador precisa apresentar o segredo dedicado no header x-push-secret, e
+// o verify_jwt fica desligado (supabase/config.toml) porque o banco não tem
+// JWT nenhum pra mandar.
 //
 // O EXPO_ACCESS_TOKEN fica como secret e nunca entra no bundle do app: a
 // documentação do Expo avisa que, sem ele, qualquer um que descubra um token de
@@ -13,17 +22,15 @@
 
 import { createClient } from 'jsr:@supabase/supabase-js@2';
 
+import { segredoConfere, validarPedido } from './validacao.ts';
+
 const EXPO_PUSH_URL = 'https://exp.host/--/api/v2/push/send';
 
 // O endpoint do Expo aceita no máximo 100 mensagens por requisição.
 const TAMANHO_LOTE = 100;
 
-type Payload = {
-  usuario_id: string;
-  titulo: string;
-  corpo: string;
-  dados?: Record<string, unknown>;
-};
+// O corpo legítimo tem poucas centenas de bytes; nada justifica ler mais.
+const TAMANHO_MAX_REQUISICAO = 16 * 1024;
 
 function emLotes<T>(itens: T[], tamanho: number): T[][] {
   const lotes: T[][] = [];
@@ -31,50 +38,67 @@ function emLotes<T>(itens: T[], tamanho: number): T[][] {
   return lotes;
 }
 
+function responder(status: number, corpo: Record<string, unknown>) {
+  return new Response(JSON.stringify(corpo), { status, headers: { 'Content-Type': 'application/json' } });
+}
+
 Deno.serve(async (req) => {
   if (req.method !== 'POST') {
-    return new Response('Method not allowed', { status: 405 });
+    return responder(405, { erro: 'Método não permitido' });
   }
 
-  let payload: Payload;
+  // Sem o segredo configurado a função fica fechada (nunca aberta).
+  const segredo = Deno.env.get('PUSH_WEBHOOK_SECRET');
+  if (!segredo) {
+    console.error('PUSH_WEBHOOK_SECRET não configurado: recusando todas as chamadas.');
+    return responder(503, { erro: 'Função não configurada' });
+  }
+
+  // Autentica antes de ler o corpo: pedido de fora não chega nem no parser.
+  if (!(await segredoConfere(req.headers.get('x-push-secret'), segredo))) {
+    return responder(401, { erro: 'Não autorizado' });
+  }
+
+  if (Number(req.headers.get('content-length') ?? 0) > TAMANHO_MAX_REQUISICAO) {
+    return responder(413, { erro: 'Pedido grande demais' });
+  }
+
+  let corpo: unknown;
   try {
-    payload = await req.json();
+    corpo = await req.json();
   } catch {
-    return new Response(JSON.stringify({ erro: 'JSON inválido' }), { status: 400 });
+    return responder(400, { erro: 'JSON inválido' });
   }
 
-  const { usuario_id, titulo, corpo, dados } = payload;
-  if (!usuario_id || !titulo || !corpo) {
-    return new Response(JSON.stringify({ erro: 'usuario_id, titulo e corpo são obrigatórios' }), { status: 400 });
+  const pedido = validarPedido(corpo);
+  if (!pedido) {
+    return responder(400, { erro: 'Pedido inválido' });
   }
 
   // service_role porque a função precisa ler os tokens de OUTRA pessoa (quem
   // vai receber a notificação), o que a RLS de push_tokens corretamente proíbe
-  // pro cliente. Esta função só é alcançável pelos triggers, que já mandam o
-  // Bearer do service_role — nunca é chamada pelo app.
-  const supabase = createClient(
-    Deno.env.get('SUPABASE_URL')!,
-    Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-  );
+  // pro cliente. A chave é injetada pelo próprio Supabase no runtime da
+  // função e nunca sai daqui.
+  const supabase = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
 
   const { data: tokens, error } = await supabase
     .from('push_tokens')
     .select('token')
-    .eq('usuario_id', usuario_id);
+    .eq('usuario_id', pedido.usuario_id);
 
   if (error) {
-    console.error('Falha ao buscar tokens:', error.message);
-    return new Response(JSON.stringify({ erro: 'Falha ao buscar tokens' }), { status: 500 });
+    console.error('Falha ao buscar tokens:', error.code);
+    return responder(500, { erro: 'Falha ao buscar tokens' });
   }
   if (!tokens?.length) {
-    return new Response(JSON.stringify({ enviados: 0 }), { status: 200 });
+    return responder(200, { enviados: 0 });
   }
 
   const mensagens = tokens.map(({ token }) => ({
     to: token,
-    title: titulo,
-    body: corpo,
-    data: dados ?? {},
+    title: pedido.titulo,
+    body: pedido.corpo,
+    data: pedido.dados,
     sound: 'default',
     channelId: 'default',
   }));
@@ -92,8 +116,10 @@ Deno.serve(async (req) => {
       body: JSON.stringify(lote),
     });
 
+    // Só o status vai pro log: o corpo de erro do Expo pode citar os tokens
+    // dos aparelhos, que são dado do usuário.
     if (!resposta.ok) {
-      console.error('Expo respondeu', resposta.status, await resposta.text());
+      console.error('Expo respondeu com status', resposta.status);
       continue;
     }
 
@@ -114,8 +140,5 @@ Deno.serve(async (req) => {
     await supabase.from('push_tokens').delete().in('token', tokensInvalidos);
   }
 
-  return new Response(
-    JSON.stringify({ enviados: mensagens.length - tokensInvalidos.length, removidos: tokensInvalidos.length }),
-    { status: 200, headers: { 'Content-Type': 'application/json' } }
-  );
+  return responder(200, { enviados: mensagens.length - tokensInvalidos.length, removidos: tokensInvalidos.length });
 });

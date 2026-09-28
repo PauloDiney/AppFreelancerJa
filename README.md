@@ -35,21 +35,29 @@ Push **não funciona no Expo Go** (desde a SDK 53) — precisa de um development
 eas build --profile development --platform android
 ```
 
-Do lado do servidor, depois de rodar a `0017`:
+Do lado do servidor, depois de rodar até a `0018`. Primeiro gere um segredo
+aleatório que serve **só** pro banco chamar a function (nunca use a
+`service_role` aqui):
 
 ```bash
-supabase functions deploy enviar-push
-supabase secrets set EXPO_ACCESS_TOKEN=...   # expo.dev > Account Settings > Access Tokens
+openssl rand -hex 32   # guarde a saída: é o PUSH_WEBHOOK_SECRET
+
+supabase functions deploy enviar-push --no-verify-jwt   # a function confere o segredo no código
+supabase secrets set PUSH_WEBHOOK_SECRET=...            # o valor gerado acima
+supabase secrets set EXPO_ACCESS_TOKEN=...              # expo.dev > Account Settings > Access Tokens
 ```
 
-E os dois settings que os triggers usam pra achar a function (veja o cabeçalho da `0017_push_tokens.sql`):
+E os dois segredos que o trigger lê do Vault (SQL Editor):
 
 ```sql
-alter database postgres set "app.settings.supabase_url" = 'https://SEU-REF.supabase.co';
-alter database postgres set "app.settings.service_role_key" = 'SUA_SERVICE_ROLE_KEY';
+select vault.create_secret('https://SEU-REF.supabase.co', 'push_project_url');
+select vault.create_secret('O_MESMO_PUSH_WEBHOOK_SECRET', 'push_webhook_secret');
 ```
 
-Sem esses settings o app continua funcionando normalmente — só não envia notificação.
+Sem esses segredos o app continua funcionando normalmente — só não envia
+notificação. Se você seguiu a versão antiga deste README e gravou
+`app.settings.service_role_key` no banco, a `0018` tenta removê-lo; confira e
+**rotacione a service_role key** (ver `docs/ARCHITECTURE_SECURITY_AUDIT.md`).
 
 ## Estrutura
 
@@ -73,7 +81,12 @@ supabase/
 npx tsc --noEmit    # tipos
 npx expo lint       # ESLint
 npx expo-doctor     # sanidade do app.json e das dependências
+npm test            # testes unitários (sessão no Keychain, validação da enviar-push)
+npm run test:db     # testes de RLS/regras de negócio (pgTAP; precisa de Docker + Supabase CLI)
 ```
+
+Os testes de banco ficam em `supabase/tests/database/` e rodam contra um
+Supabase local (`supabase start` aplica todas as migrations antes).
 
 ## Onde a segurança mora
 
@@ -86,8 +99,16 @@ ser entendidos antes de mexer no schema:
   `revoke ... from authenticated` + `grant (colunas específicas)`. Um
   `select *` novo numa dessas tabelas vai falhar — é de propósito.
 - **Regra de negócio que precisa valer sempre vive em trigger ou função**, não
-  na policy: `validar_transicao_bico` é o que impede forjar o prestador
-  escolhido, e vale tanto pro `update` direto quanto pela RPC.
+  na policy: `validar_insercao_bico` (todo bico nasce `aberto`, sem prestador)
+  e `validar_transicao_bico` (só se escolhe candidatura ativa, nunca o dono)
+  são o que impede forjar o prestador escolhido — e valem tanto pro `insert`/
+  `update` direto quanto pelas RPCs.
+- **Função `security definer` não pode devolver o que a coluna esconde.**
+  `bicos_proximos` calcula tudo sobre o ponto arredondado pra uma grade de
+  ~1 km; com a distância exata, três chamadas davam a coordenada da casa.
+
+A auditoria completa (o que foi corrigido, o que falta e os passos manuais no
+painel do Supabase) está em `docs/ARCHITECTURE_SECURITY_AUDIT.md`.
 
 ## O que ainda falta
 
@@ -98,4 +119,4 @@ ser entendidos antes de mexer no schema:
 5. Busca e paginação no servidor (hoje o filtro é no cliente, sobre as últimas 15/30 linhas)
 6. Busca por proximidade (`bicos_proximos` já devolve distância, falta ligar na tela)
 7. Recuperação de senha e login com Google
-8. Testes e CI
+8. CI rodando `npm test` e `npm run test:db` a cada push (os testes já existem)
