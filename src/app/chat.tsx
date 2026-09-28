@@ -15,7 +15,7 @@ import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useUsuarioLogado } from '@/hooks/use-usuario-logado';
 import { supabase } from '@/services/supabaseClient';
-import { AVATAR_PALETTE, iniciais } from '@/utils/bico';
+import { AVATAR_PALETTE, StatusBico, bicoAtivo, iniciais } from '@/utils/bico';
 import { formatarDataLista } from '@/utils/chat';
 import { mensagemErro } from '@/utils/erros';
 
@@ -28,7 +28,7 @@ type ConversaBruta = {
   participante_2_id: string;
   oculta_participante_1: boolean;
   oculta_participante_2: boolean;
-  bicos: { titulo: string; status: string } | null;
+  bicos: { titulo: string; status: StatusBico } | null;
   participante_1: { nome_completo: string | null } | null;
   participante_2: { nome_completo: string | null } | null;
 };
@@ -60,8 +60,8 @@ type Mensagem = {
 
 // Lista de conversas (tab "Chat"). "Ocultar" (swipe) só some a conversa da
 // lista de quem ocultou — ela continua existindo e visível pro outro
-// participante — e só fica disponível depois que o bico é concluído
-// (ver migration 0009).
+// participante — e só fica disponível depois que o bico termina (concluído
+// ou cancelado; ver migration 0009).
 export default function ChatListaScreen() {
   const theme = useTheme();
   const router = useRouter();
@@ -122,7 +122,7 @@ export default function ChatListaScreen() {
           id: conversa.id,
           nome: outro?.nome_completo ?? 'Usuário',
           tituloBico: conversa.bicos?.titulo ?? 'Bico',
-          statusBico: conversa.bicos?.status ?? 'aberto',
+          statusBico: conversa.bicos?.status ?? ('aberto' as StatusBico),
           campoOculto: souParticipante1 ? ('oculta_participante_1' as const) : ('oculta_participante_2' as const),
           ultimaMensagem,
           naoLidas,
@@ -134,7 +134,7 @@ export default function ChatListaScreen() {
     return conversas
       .filter((conversa) => {
         if (filtro === 'nao_lidas') return conversa.naoLidas > 0;
-        if (filtro === 'ativos') return conversa.statusBico === 'em_andamento';
+        if (filtro === 'ativos') return bicoAtivo(conversa.statusBico);
         return true;
       })
       .filter((conversa) => {
@@ -238,7 +238,7 @@ export default function ChatListaScreen() {
             conversasFiltradas.map((conversa, index) => {
               const paleta = AVATAR_PALETTE[index % AVATAR_PALETTE.length];
               const naoLida = conversa.naoLidas > 0;
-              const podeOcultar = conversa.statusBico === 'concluido';
+              const podeOcultar = conversa.statusBico === 'concluido' || conversa.statusBico === 'cancelado';
 
               const linha = (
                 <Pressable

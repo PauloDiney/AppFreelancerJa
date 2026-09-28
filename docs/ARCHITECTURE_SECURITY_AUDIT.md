@@ -36,6 +36,13 @@ Deploying the fixes requires: running migration `0018`, creating two Vault secre
 one Edge Function secret, redeploying `enviar-push`, and shipping **new native builds**
 (a native module was added). See [§19](#19-manual-supabase-configuration-and-deployment).
 
+> **Phase 2 update.** Migration `0019` (see [`JOB_LIFECYCLE_DESIGN.md`](JOB_LIFECYCLE_DESIGN.md))
+> replaced the job workflow with RPC-only transitions and fixed **M5** and **M10**;
+> lifecycle actions also require an active account (part of **M6**). The new sensitive
+> data (cancellation reasons, disputes) is readable only by the two participants, so it
+> does not widen **M2**. The §9 matrices below describe the Phase 1 state; the current
+> rules for `bicos`, `candidaturas` and `avaliacoes` are in the design document.
+
 | Severity | Found | Fixed here | Open |
 | --- | ---: | ---: | ---: |
 | CRITICAL | 2 | 2 | 0 |
@@ -134,12 +141,12 @@ app; "admin" below means the Supabase dashboard / `service_role`, which bypass R
 | M2 | MEDIUM | Every job — including closed ones, worker and price — readable by every user | Open | Yes |
 | M3 | MEDIUM | CPF/CNPJ unique index = existence oracle + identity squatting | Open | Yes |
 | M4 | MEDIUM | A chat participant can hide/unhide the conversation for the other party | Open | Yes |
-| M5 | MEDIUM | Application integrity (self-application, status chosen on insert, owner flips statuses any time) | Open (worst consequence closed by C2 fix) | Yes |
-| M6 | MEDIUM | Account suspension (`status_conta`) only partially enforced | Open | Yes |
+| M5 | MEDIUM | Application integrity (self-application, status chosen on insert, owner flips statuses any time) | **Fixed in Phase 2** (`0019`) | Yes |
+| M6 | MEDIUM | Account suspension (`status_conta`) only partially enforced | Partly: all Phase 2 lifecycle RPCs require an active account | Yes |
 | M7 | MEDIUM | No rate limiting on writes (each message also triggers a push) | Open | Yes |
 | M8 | MEDIUM | Push token not reassigned / not cleaned on remote logout → previous account's notifications reach the device | Open | Yes |
 | M9 | MEDIUM | Notification body shows sender and message preview on the lock screen | Open | Yes (text built in trigger) |
-| M10 | MEDIUM | Contractor controls completion/cancellation unilaterally | Open (product decision) | Yes |
+| M10 | MEDIUM | Contractor controls completion/cancellation unilaterally | **Fixed in Phase 2** (`0019`: worker finishes, owner confirms; owner cannot cancel after start) | Yes |
 | M11 | MEDIUM | Auth hardening depends on dashboard settings (password policy, email confirmation, CAPTCHA) | Open (manual) | No |
 | M12 | MEDIUM | LGPD: no account deletion or data export | Open | Yes |
 | M13 | MEDIUM | Avatar images not re-encoded; EXIF (possibly GPS) may reach a public bucket | Open (verify on device) | No |

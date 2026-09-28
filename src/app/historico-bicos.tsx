@@ -13,35 +13,44 @@ import { useEstatisticasPerfil } from '@/hooks/use-estatisticas-perfil';
 import { useTheme } from '@/hooks/use-theme';
 import { useUsuarioLogado } from '@/hooks/use-usuario-logado';
 import { supabase } from '@/services/supabaseClient';
-import { AVATAR_PALETTE, formatarDataCurta, formatarGanhos, formatarMesAno, formatarQuando, formatarValor, iniciais } from '@/utils/bico';
+import {
+  AVATAR_PALETTE,
+  STATUS_ATIVOS,
+  StatusBico,
+  bicoAtivo,
+  formatarDataCurta,
+  formatarGanhos,
+  formatarMesAno,
+  formatarQuando,
+  formatarValor,
+  iniciais,
+  prazoDeAvaliacaoAberto,
+  seloStatusBico,
+} from '@/utils/bico';
 import { abrirConversa } from '@/utils/chat';
 import { mensagemErro } from '@/utils/erros';
 
-type StatusHistorico = 'em_andamento' | 'concluido' | 'cancelado';
+// "em_andamento" no filtro quer dizer qualquer estado ativo (escolhido,
+// iniciado, aguardando confirmação ou em disputa).
 type Filtro = 'todos' | 'em_andamento' | 'concluido';
 
 type BicoHistorico = {
   id: string;
   titulo: string;
-  status: StatusHistorico;
+  status: StatusBico;
   valor_oferecido: number | null;
   forma_pagamento: 'dinheiro' | 'pix';
   data_hora_desejada: string | null;
   atualizado_em: string;
+  concluido_em: string | null;
   criado_por: string;
   profiles: { nome_completo: string | null } | null;
 };
 
-function badgeStatus(status: StatusHistorico) {
-  if (status === 'em_andamento') return { texto: 'A PAGAR', cor: 'statusPending' as const };
-  if (status === 'concluido') return { texto: '✓ PAGO', cor: 'statusSuccess' as const };
-  return { texto: 'CANCELADO', cor: 'textSecondary' as const };
-}
-
 // Histórico de bicos em que o usuário foi o prestador (candidato
 // selecionado) — não inclui os bicos que ele criou como contratante, isso
-// fica em /perfil. Agrupado por mês, exceto os "em_andamento" que ficam
-// destacados no topo em qualquer filtro.
+// fica em /perfil. Agrupado por mês, exceto os ativos (escolhido, iniciado,
+// aguardando confirmação, em disputa) que ficam destacados no topo.
 export default function HistoricoBicosScreen() {
   const theme = useTheme();
   const router = useRouter();
@@ -59,10 +68,10 @@ export default function HistoricoBicosScreen() {
       const { data, error } = await supabase
         .from('bicos')
         .select(
-          'id, titulo, status, valor_oferecido, forma_pagamento, data_hora_desejada, atualizado_em, criado_por, profiles!bicos_criado_por_fkey(nome_completo)'
+          'id, titulo, status, valor_oferecido, forma_pagamento, data_hora_desejada, atualizado_em, concluido_em, criado_por, profiles!bicos_criado_por_fkey(nome_completo)'
         )
         .eq('candidato_selecionado_id', usuarioId)
-        .in('status', ['em_andamento', 'concluido', 'cancelado'])
+        .in('status', [...STATUS_ATIVOS, 'concluido', 'cancelado'])
         .order('atualizado_em', { ascending: false });
       if (error) throw error;
       return data as unknown as BicoHistorico[];
@@ -89,12 +98,13 @@ export default function HistoricoBicosScreen() {
   const filtrados = useMemo(() => {
     const lista = historicoQuery.data ?? [];
     if (filtro === 'todos') return lista;
+    if (filtro === 'em_andamento') return lista.filter((bico) => bicoAtivo(bico.status));
     return lista.filter((bico) => bico.status === filtro);
   }, [historicoQuery.data, filtro]);
 
   const { emAndamento, grupos } = useMemo(() => {
-    const emAndamento = filtrados.filter((bico) => bico.status === 'em_andamento');
-    const outros = filtrados.filter((bico) => bico.status !== 'em_andamento');
+    const emAndamento = filtrados.filter((bico) => bicoAtivo(bico.status));
+    const outros = filtrados.filter((bico) => !bicoAtivo(bico.status));
     const grupos: { titulo: string; itens: BicoHistorico[] }[] = [];
     outros.forEach((bico) => {
       const chave = formatarMesAno(bico.atualizado_em);
@@ -201,7 +211,7 @@ export default function HistoricoBicosScreen() {
                 AGORA
               </ThemedText>
               {emAndamento.map((bico) => {
-                const badge = badgeStatus(bico.status);
+                const badge = seloStatusBico(bico.status);
                 return (
                   <Pressable
                     key={bico.id}
@@ -249,7 +259,7 @@ export default function HistoricoBicosScreen() {
                 {grupo.titulo}
               </ThemedText>
               {grupo.itens.map((bico, index) => {
-                const badge = badgeStatus(bico.status);
+                const badge = seloStatusBico(bico.status);
                 const paleta = bico.status === 'cancelado' ? { bg: theme.backgroundSelected, text: 'textSecondary' as const } : AVATAR_PALETTE[index % AVATAR_PALETTE.length];
                 const minhaNota = notaPorBico.get(bico.id);
 
@@ -289,6 +299,10 @@ export default function HistoricoBicosScreen() {
                         <ThemedText type="small" themeColor="textSecondary">
                           {'★'.repeat(minhaNota)}
                           {'☆'.repeat(5 - minhaNota)} você avaliou
+                        </ThemedText>
+                      ) : !prazoDeAvaliacaoAberto(bico.concluido_em) ? (
+                        <ThemedText type="small" themeColor="textSecondary">
+                          Prazo de avaliação encerrado
                         </ThemedText>
                       ) : (
                         <Pressable

@@ -54,6 +54,20 @@ test('pedido sem título ou corpo é recusado', () => {
   assert.equal(validarPedido({ usuario_id: USUARIO, titulo: 'x', corpo: 42 }), null);
 });
 
+test('avisos do ciclo de vida do bico chegam ao app com o bico', () => {
+  const BICO = '33333333-3333-3333-3333-333333333333';
+  for (const tipo of ['candidatura_aceita', 'bico_iniciado', 'bico_concluido', 'disputa_aberta', 'avaliacao_recebida']) {
+    const pedido = validarPedido({ usuario_id: USUARIO, titulo: 'x', corpo: 'y', dados: { tipo, bico_id: BICO } });
+    assert.deepEqual(pedido?.dados, { tipo, bico_id: BICO }, tipo);
+  }
+});
+
+test('tipo desconhecido ou bico_id inválido não navega', () => {
+  const BICO = '33333333-3333-3333-3333-333333333333';
+  assert.deepEqual(validarPedido({ usuario_id: USUARIO, titulo: 'x', corpo: 'y', dados: { tipo: 'abrir_url', bico_id: BICO } })?.dados, {});
+  assert.deepEqual(validarPedido({ usuario_id: USUARIO, titulo: 'x', corpo: 'y', dados: { tipo: 'bico_iniciado', bico_id: 'x' } })?.dados, {});
+});
+
 test('dados fora dos formatos conhecidos são descartados', () => {
   const pedido = validarPedido({
     usuario_id: USUARIO,

@@ -12,7 +12,7 @@ import { Spacing, ThemeColor } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useUsuarioLogado } from '@/hooks/use-usuario-logado';
 import { supabase } from '@/services/supabaseClient';
-import { formatarDataCurta, formatarQuando, formatarValor, iniciais } from '@/utils/bico';
+import { STATUS_ATIVOS, StatusBico, bicoAtivo, formatarDataCurta, formatarQuando, formatarValor, iniciais } from '@/utils/bico';
 
 type FormaPagamento = 'dinheiro' | 'pix';
 type TipoPagamento = 'aguardando' | 'recebido' | 'pago';
@@ -23,7 +23,7 @@ type BicoPrestador = {
   titulo: string;
   valor_oferecido: number | null;
   forma_pagamento: FormaPagamento;
-  status: 'em_andamento' | 'concluido';
+  status: StatusBico;
   atualizado_em: string;
   profiles: { nome_completo: string | null } | null;
 };
@@ -80,7 +80,7 @@ export default function PagamentosScreen() {
           'id, titulo, valor_oferecido, forma_pagamento, status, atualizado_em, profiles!bicos_criado_por_fkey(nome_completo)'
         )
         .eq('candidato_selecionado_id', usuarioId)
-        .in('status', ['em_andamento', 'concluido'])
+        .in('status', [...STATUS_ATIVOS, 'concluido'])
         .order('atualizado_em', { ascending: false });
       if (error) throw error;
       return data as unknown as BicoPrestador[];
@@ -114,7 +114,7 @@ export default function PagamentosScreen() {
       formaPagamento: bico.forma_pagamento,
       valor: bico.valor_oferecido,
       data: bico.atualizado_em,
-      tipo: (bico.status === 'em_andamento' ? 'aguardando' : 'recebido') as TipoPagamento,
+      tipo: (bicoAtivo(bico.status) ? 'aguardando' : 'recebido') as TipoPagamento,
     }));
 
     const doContratante = (contratanteQuery.data ?? []).map((bico) => ({

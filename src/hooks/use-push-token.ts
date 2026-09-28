@@ -106,9 +106,12 @@ export function useRegistroPush(usuarioId: string | null) {
         bico_id?: string;
       };
 
+      // Mensagem abre a conversa; todo aviso do ciclo de vida (candidatura,
+      // escolha, início, conclusão, cancelamento, disputa, avaliação — ver
+      // migration 0019) traz o bico e abre a tela dele.
       if (dados?.tipo === 'mensagem' && dados.conversa_id) {
         router.push({ pathname: '/chat/[id]', params: { id: dados.conversa_id } });
-      } else if (dados?.tipo === 'candidatura' && dados.bico_id) {
+      } else if (dados?.bico_id) {
         router.push({ pathname: '/bico/[id]', params: { id: dados.bico_id } });
       }
     });
