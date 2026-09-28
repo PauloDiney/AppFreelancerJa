@@ -6,15 +6,17 @@ import { useState } from 'react';
 import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { PainelCicloBico } from '@/components/painel-ciclo-bico';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useUsuarioLogado } from '@/hooks/use-usuario-logado';
 import { supabase } from '@/services/supabaseClient';
-import { AVATAR_PALETTE, calcularBadge, formatarQuando, formatarValor, iniciais } from '@/utils/bico';
+import { AVATAR_PALETTE, StatusBico, calcularBadge, formatarQuando, formatarValor, iniciais } from '@/utils/bico';
 import { abrirConversa } from '@/utils/chat';
-import { mensagemErro } from '@/utils/erros';
+import { aceitarCandidatura, atualizarDepoisDaAcao, candidatarSe, retirarCandidatura } from '@/utils/ciclo-bico';
+import { ErroSupabase, mensagemErro } from '@/utils/erros';
 
 type Bico = {
   id: string;
@@ -24,9 +26,10 @@ type Bico = {
   endereco_texto: string | null;
   data_hora_desejada: string | null;
   forma_pagamento: 'dinheiro' | 'pix';
-  status: 'aberto' | 'em_andamento' | 'concluido' | 'cancelado';
+  status: StatusBico;
   criado_por: string;
   candidato_selecionado_id: string | null;
+  concluido_em: string | null;
   profiles: {
     nome_completo: string | null;
     nota_media_como_contratante: number | null;
@@ -45,9 +48,10 @@ type Candidatura = {
 };
 
 // Tela de detalhe de um bico. O conteúdo muda bastante dependendo de quem
-// está olhando: quem criou o bico (souCriador) vê a lista de candidatos e
-// pode escolher um; quem não criou vê o próprio status de candidatura
-// (pendente/aceita/recusada) e o botão de se candidatar.
+// está olhando: quem criou o bico (souCriador) vê a lista de candidatos, pode
+// escolher um e acompanha o ciclo de vida no PainelCicloBico; o prestador
+// escolhido vê o mesmo painel com as ações dele; os demais veem o próprio
+// status de candidatura (e podem retirá-la) ou o botão de se candidatar.
 export default function BicoDetalheScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const theme = useTheme();
@@ -64,7 +68,7 @@ export default function BicoDetalheScreen() {
       const { data, error } = await supabase
         .from('bicos')
         .select(
-          'id, titulo, descricao, valor_oferecido, endereco_texto, data_hora_desejada, forma_pagamento, status, criado_por, candidato_selecionado_id, profiles!bicos_criado_por_fkey(nome_completo, nota_media_como_contratante)'
+          'id, titulo, descricao, valor_oferecido, endereco_texto, data_hora_desejada, forma_pagamento, status, criado_por, candidato_selecionado_id, concluido_em, profiles!bicos_criado_por_fkey(nome_completo, nota_media_como_contratante)'
         )
         .eq('id', id)
         .single();
@@ -111,36 +115,29 @@ export default function BicoDetalheScreen() {
     enabled: !souCriador && !!usuarioId && !!bicoQuery.data,
   });
 
-  const atualizarTudo = () => {
-    queryClient.invalidateQueries({ queryKey: ['bico', id] });
-    queryClient.invalidateQueries({ queryKey: ['candidaturas', id] });
-    queryClient.invalidateQueries({ queryKey: ['minha-candidatura', id, usuarioId] });
-    queryClient.invalidateQueries({ queryKey: ['bicos-abertos'] });
-  };
-
-  const escolherCandidato = async (candidatoId: string) => {
+  // Ações de candidatura passam por RPCs (migration 0019): o banco confere
+  // quem chama, trava o bico e — na escolha — aceita esta candidatura, recusa
+  // as outras e atribui o bico numa transação só. Duas escolhas ao mesmo
+  // tempo nunca resultam em dois prestadores, com ou sem o botão desabilitado.
+  const executarAcao = async (acao: () => Promise<void>, titulo: string, descricao: string) => {
     setProcessando(true);
-    // RPC no banco (não um update direto) porque escolher um candidato é
-    // uma transação com 3 passos — aceitar essa candidatura, recusar as
-    // outras pendentes e marcar o bico como em_andamento — que precisam
-    // acontecer juntos ou não acontecer (ver migration 0004).
-    const { error } = await supabase.rpc('escolher_candidato', {
-      p_bico_id: id,
-      p_candidato_id: candidatoId,
-    });
-    setProcessando(false);
-
-    if (error) {
-      Alert.alert('Não foi possível escolher', mensagemErro(error, 'escolher este candidato'));
-      return;
+    try {
+      await acao();
+      atualizarDepoisDaAcao(queryClient);
+    } catch (erro) {
+      Alert.alert(titulo, mensagemErro(erro as ErroSupabase, descricao));
+    } finally {
+      setProcessando(false);
     }
-    atualizarTudo();
   };
 
-  const confirmarEscolha = (nome: string, candidatoId: string) => {
+  const escolherCandidato = (candidaturaId: string) =>
+    executarAcao(() => aceitarCandidatura(candidaturaId), 'Não foi possível escolher', 'escolher este candidato');
+
+  const confirmarEscolha = (nome: string, candidaturaId: string) => {
     Alert.alert('Escolher candidato', `Escolher ${nome} para este bico?`, [
       { text: 'Cancelar', style: 'cancel' },
-      { text: 'Escolher', onPress: () => escolherCandidato(candidatoId) },
+      { text: 'Escolher', onPress: () => escolherCandidato(candidaturaId) },
     ]);
   };
 
@@ -157,45 +154,22 @@ export default function BicoDetalheScreen() {
     }
   };
 
-  // Único caso de cancelamento sem ambiguidade: o dono desiste enquanto o bico
-  // ainda está "aberto" e ninguém foi escolhido. A transição aberto→cancelado
-  // já era permitida pelo trigger validar_transicao_bico (migration 0010), mas
-  // nenhuma tela usava — um bico publicado por engano ficava no feed pra sempre.
-  // Cancelar depois de "em_andamento" é outro problema (envolve quem já estava
-  // contando com o serviço) e precisa de um fluxo de disputa próprio.
-  const cancelarBico = () => {
-    Alert.alert('Cancelar bico', 'Ele sai do feed e ninguém mais pode se candidatar. Não dá pra desfazer.', [
+  // Cancelar, iniciar, finalizar, confirmar, disputar e avaliar ficam no
+  // PainelCicloBico (o mesmo usado no chat).
+
+  const seCandidatar = () =>
+    executarAcao(() => candidatarSe(id), 'Não foi possível se candidatar', 'se candidatar');
+
+  const retirar = (candidaturaId: string) => {
+    Alert.alert('Retirar candidatura', 'O contratante deixa de poder escolher você para este bico.', [
       { text: 'Voltar', style: 'cancel' },
       {
-        text: 'Cancelar bico',
+        text: 'Retirar',
         style: 'destructive',
-        onPress: async () => {
-          setProcessando(true);
-          const { error } = await supabase.from('bicos').update({ status: 'cancelado' }).eq('id', id);
-          setProcessando(false);
-
-          if (error) {
-            Alert.alert('Não foi possível cancelar', mensagemErro(error, 'cancelar este bico'));
-            return;
-          }
-          atualizarTudo();
-          router.back();
-        },
+        onPress: () =>
+          executarAcao(() => retirarCandidatura(candidaturaId), 'Não foi possível retirar', 'retirar a candidatura'),
       },
     ]);
-  };
-
-  const candidatarSe = async () => {
-    if (!usuarioId) return;
-    setProcessando(true);
-    const { error } = await supabase.from('candidaturas').insert({ bico_id: id, candidato_id: usuarioId });
-    setProcessando(false);
-
-    if (error) {
-      Alert.alert('Não foi possível se candidatar', mensagemErro(error, 'se candidatar'));
-      return;
-    }
-    atualizarTudo();
   };
 
   if (bicoQuery.isLoading || !bicoQuery.data) {
@@ -337,6 +311,10 @@ export default function BicoDetalheScreen() {
                       <ThemedText type="small" themeColor="textSecondary">
                         Recusado
                       </ThemedText>
+                    ) : candidatura.status === 'retirada' ? (
+                      <ThemedText type="small" themeColor="textSecondary">
+                        Desistiu
+                      </ThemedText>
                     ) : bico.status !== 'aberto' ? (
                       <ThemedText type="small" themeColor="textSecondary">
                         Não selecionado
@@ -345,7 +323,7 @@ export default function BicoDetalheScreen() {
                       <Pressable
                         style={[styles.acaoBotao, { backgroundColor: theme.primary }]}
                         disabled={processando}
-                        onPress={() => escolherCandidato(candidatura.candidato_id)}
+                        onPress={() => escolherCandidato(candidatura.id)}
                       >
                         <ThemedText type="smallBold" themeColor="background">
                           Escolher
@@ -355,7 +333,7 @@ export default function BicoDetalheScreen() {
                       <Pressable
                         style={[styles.acaoBotaoOutline, { borderColor: theme.primary }]}
                         disabled={processando}
-                        onPress={() => confirmarEscolha(nome, candidatura.candidato_id)}
+                        onPress={() => confirmarEscolha(nome, candidatura.id)}
                       >
                         <ThemedText type="smallBold" themeColor="primary">
                           Ver
@@ -367,38 +345,57 @@ export default function BicoDetalheScreen() {
               })
             )}
 
-            {bico.status === 'aberto' && (
-              <Pressable style={styles.cancelarBotao} disabled={processando} onPress={cancelarBico}>
-                <ThemedText type="smallBold" themeColor="statusDanger">
-                  Cancelar este bico
-                </ThemedText>
-              </Pressable>
+            {usuarioId && (
+              <View style={[styles.statusBox, { backgroundColor: theme.backgroundElement }]}>
+                <PainelCicloBico
+                  bico={bico}
+                  usuarioId={usuarioId}
+                  nomeOutraParte={
+                    candidaturasQuery.data?.find((c) => c.candidato_id === bico.candidato_selecionado_id)?.profiles
+                      ?.nome_completo
+                  }
+                />
+              </View>
             )}
+          </View>
+        ) : usuarioId && bico.candidato_selecionado_id === usuarioId ? (
+          <View style={[styles.statusBox, { backgroundColor: theme.backgroundElement }]}>
+            <PainelCicloBico
+              bico={bico}
+              usuarioId={usuarioId}
+              nomeOutraParte={bico.profiles?.nome_completo}
+              aoConversar={() => iniciarConversa(bico.criado_por)}
+              conversando={abrindoConversa}
+            />
           </View>
         ) : (
           <View style={[styles.statusBox, { backgroundColor: theme.backgroundElement }]}>
-            {minhaCandidaturaQuery.data?.status === 'aceita' ? (
-              <View style={styles.field}>
-                <ThemedText themeColor="statusSuccess" style={styles.centerText}>
-                  Você foi escolhido! Combine os detalhes com {bico.profiles?.nome_completo ?? 'o contratante'}.
-                </ThemedText>
-                <Pressable
-                  style={[styles.button, { backgroundColor: theme.primary }, abrindoConversa && styles.disabled]}
-                  disabled={abrindoConversa}
-                  onPress={() => iniciarConversa(bico.criado_por)}
-                >
-                  <ThemedText type="default" themeColor="background" style={styles.buttonText}>
-                    Iniciar conversa
-                  </ThemedText>
-                </Pressable>
-              </View>
-            ) : minhaCandidaturaQuery.data?.status === 'recusada' ? (
+            {minhaCandidaturaQuery.data?.status === 'recusada' ? (
               <ThemedText themeColor="textSecondary" style={styles.centerText}>
                 Você não foi escolhido para esse bico.
               </ThemedText>
-            ) : minhaCandidaturaQuery.data?.status === 'pendente' ? (
+            ) : minhaCandidaturaQuery.data?.status === 'retirada' ? (
               <ThemedText themeColor="textSecondary" style={styles.centerText}>
-                Você se candidatou — aguardando resposta do contratante.
+                Você retirou sua candidatura.
+              </ThemedText>
+            ) : minhaCandidaturaQuery.data?.status === 'pendente' && bico.status === 'aberto' ? (
+              <View style={styles.field}>
+                <ThemedText themeColor="textSecondary" style={styles.centerText}>
+                  Você se candidatou — aguardando resposta do contratante.
+                </ThemedText>
+                <Pressable
+                  style={styles.cancelarBotao}
+                  disabled={processando}
+                  onPress={() => retirar(minhaCandidaturaQuery.data!.id)}
+                >
+                  <ThemedText type="smallBold" themeColor="statusDanger">
+                    Retirar candidatura
+                  </ThemedText>
+                </Pressable>
+              </View>
+            ) : bico.status === 'cancelado' ? (
+              <ThemedText themeColor="textSecondary" style={styles.centerText}>
+                Este bico foi cancelado.
               </ThemedText>
             ) : bico.status !== 'aberto' ? (
               <ThemedText themeColor="textSecondary" style={styles.centerText}>
@@ -407,7 +404,7 @@ export default function BicoDetalheScreen() {
             ) : (
               <Pressable
                 style={[styles.button, { backgroundColor: theme.primary }, processando && styles.disabled]}
-                onPress={candidatarSe}
+                onPress={seCandidatar}
                 disabled={processando}
               >
                 <ThemedText type="default" themeColor="background" style={styles.buttonText}>

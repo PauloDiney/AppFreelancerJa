@@ -35,7 +35,7 @@ Push **não funciona no Expo Go** (desde a SDK 53) — precisa de um development
 eas build --profile development --platform android
 ```
 
-Do lado do servidor, depois de rodar até a `0018`. Primeiro gere um segredo
+Do lado do servidor, depois de rodar até a `0019`. Primeiro gere um segredo
 aleatório que serve **só** pro banco chamar a function (nunca use a
 `service_role` aqui):
 
@@ -81,7 +81,7 @@ supabase/
 npx tsc --noEmit    # tipos
 npx expo lint       # ESLint
 npx expo-doctor     # sanidade do app.json e das dependências
-npm test            # testes unitários (sessão no Keychain, validação da enviar-push)
+npm test            # testes unitários (sessão no Keychain, erros de domínio, validação da enviar-push)
 npm run test:db     # testes de RLS/regras de negócio (pgTAP; precisa de Docker + Supabase CLI)
 ```
 
@@ -98,22 +98,30 @@ ser entendidos antes de mexer no schema:
   (telefone e CPF em `profiles`, GPS em `bicos`), o acesso é fechado com
   `revoke ... from authenticated` + `grant (colunas específicas)`. Um
   `select *` novo numa dessas tabelas vai falhar — é de propósito.
-- **Regra de negócio que precisa valer sempre vive em trigger ou função**, não
-  na policy: `validar_insercao_bico` (todo bico nasce `aberto`, sem prestador)
-  e `validar_transicao_bico` (só se escolhe candidatura ativa, nunca o dono)
-  são o que impede forjar o prestador escolhido — e valem tanto pro `insert`/
-  `update` direto quanto pelas RPCs.
+- **O ciclo de vida do bico só anda por RPC.** `aberto → atribuido →
+  em_andamento → aguardando_confirmacao → concluido` (+ `cancelado` e
+  `em_disputa`): o app não tem permissão de UPDATE no status. Cada passo é uma
+  função (`aceitar_candidatura`, `iniciar_bico`, `marcar_bico_finalizado`,
+  `confirmar_conclusao_bico`, `cancelar_bico`, `abrir_disputa`, `avaliar_bico`)
+  que confere quem chama e trava a linha do bico. Os triggers
+  `validar_insercao_bico` e `validar_transicao_bico` são a última barreira e
+  valem até pra service_role. Detalhes em `docs/JOB_LIFECYCLE_DESIGN.md`.
+- **Erro de regra de negócio traz código.** As RPCs mandam uma mensagem em
+  português e um código estável no `hint` (ex.: `JOB_ALREADY_ASSIGNED`);
+  `utils/erros.ts` traduz o código — nunca mostre o texto cru do banco.
 - **Função `security definer` não pode devolver o que a coluna esconde.**
   `bicos_proximos` calcula tudo sobre o ponto arredondado pra uma grade de
   ~1 km; com a distância exata, três chamadas davam a coordenada da casa.
 
 A auditoria completa (o que foi corrigido, o que falta e os passos manuais no
-painel do Supabase) está em `docs/ARCHITECTURE_SECURITY_AUDIT.md`.
+painel do Supabase) está em `docs/ARCHITECTURE_SECURITY_AUDIT.md`; o desenho
+do ciclo de vida (estados, quem pode o quê, cancelamento, disputas,
+avaliações cegas, concorrência) em `docs/JOB_LIFECYCLE_DESIGN.md`.
 
 ## O que ainda falta
 
 1. Exclusão de conta e exportação de dados (LGPD — o app coleta CPF/CNPJ, nascimento, endereço e GPS)
-2. Cancelar/disputar bico já em andamento (hoje só dá pra cancelar enquanto está `aberto`)
+2. Ferramenta de moderação para resolver disputas (hoje só existe a função `resolver_disputa`, via service_role) e confirmação automática quando o contratante some
 3. Pix de verdade: hoje a chave é combinada pelo chat, sem QR Code nem repasse
 4. Denúncias e bloqueio (a tabela `denuncias` existe desde a `0001`, sem UI)
 5. Busca e paginação no servidor (hoje o filtro é no cliente, sobre as últimas 15/30 linhas)

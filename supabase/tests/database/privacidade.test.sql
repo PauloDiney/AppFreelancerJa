@@ -3,7 +3,7 @@
 -- Roda com `supabase test db` (transação com rollback no final).
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(22);
+select plan(26);
 
 create schema testes_seguranca;
 grant usage on schema testes_seguranca to public;
@@ -151,6 +151,14 @@ select is(testes_seguranca.linhas_visiveis('select 1 from public.profiles'), 0::
 select is(testes_seguranca.linhas_visiveis('select 1 from public.bicos'), 0::bigint, 'anônimo não lê bicos');
 select is(testes_seguranca.linhas_visiveis('select 1 from public.mensagens'), 0::bigint, 'anônimo não lê mensagens');
 select is(testes_seguranca.linhas_visiveis('select * from public.meus_dados_pessoais()'), 0::bigint, 'anônimo não obtém dados pessoais pela RPC');
+select is(testes_seguranca.linhas_visiveis('select 1 from public.cancelamentos'), 0::bigint, 'anônimo não lê cancelamentos');
+select is(testes_seguranca.linhas_visiveis('select 1 from public.disputas'), 0::bigint, 'anônimo não lê disputas');
+select is(testes_seguranca.linhas_visiveis('select 1 from public.notificacoes'), 0::bigint, 'anônimo não lê notificações');
+select throws_ok(
+  $$ select public.aceitar_candidatura('00000000-0000-0000-0000-000000000000') $$,
+  '42501', null,
+  'anônimo não chama as RPCs do ciclo de vida'
+);
 
 select testes_seguranca.sair();
 

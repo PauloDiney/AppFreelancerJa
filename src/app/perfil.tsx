@@ -14,7 +14,15 @@ import { useEstatisticasPerfil } from '@/hooks/use-estatisticas-perfil';
 import { useTheme } from '@/hooks/use-theme';
 import { useUsuarioLogado } from '@/hooks/use-usuario-logado';
 import { supabase } from '@/services/supabaseClient';
-import { formatarGanhos, formatarQuando, formatarValor } from '@/utils/bico';
+import {
+  STATUS_ATIVOS,
+  StatusBico,
+  formatarGanhos,
+  formatarQuando,
+  formatarValor,
+  labelStatusBico,
+  seloStatusBico,
+} from '@/utils/bico';
 import { abrirConversa } from '@/utils/chat';
 import { mensagemErro } from '@/utils/erros';
 import { encerrarSessao } from '@/utils/sessao';
@@ -27,6 +35,7 @@ type Perfil = {
 type BicoEmAndamento = {
   id: string;
   titulo: string;
+  status: StatusBico;
   data_hora_desejada: string | null;
   profiles: { nome_completo: string | null } | null;
 };
@@ -34,18 +43,11 @@ type BicoEmAndamento = {
 type BicoCriado = {
   id: string;
   titulo: string;
-  status: 'aberto' | 'em_andamento' | 'concluido' | 'cancelado';
+  status: StatusBico;
   valor_oferecido: number | null;
   candidato_selecionado_id: string | null;
   profiles: { nome_completo: string | null } | null;
 };
-
-function labelStatusBico(status: BicoCriado['status']) {
-  if (status === 'aberto') return 'Aguardando candidatos';
-  if (status === 'em_andamento') return 'Em andamento';
-  if (status === 'concluido') return 'Concluído';
-  return 'Cancelado';
-}
 
 const LISTA_MENU: {
   label: string;
@@ -89,9 +91,9 @@ export default function PerfilScreen() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('bicos')
-        .select('id, titulo, data_hora_desejada, profiles!bicos_criado_por_fkey(nome_completo)')
+        .select('id, titulo, status, data_hora_desejada, profiles!bicos_criado_por_fkey(nome_completo)')
         .eq('candidato_selecionado_id', usuarioId)
-        .eq('status', 'em_andamento')
+        .in('status', STATUS_ATIVOS)
         .order('data_hora_desejada', { ascending: true });
       if (error) throw error;
       return data as unknown as BicoEmAndamento[];
@@ -232,9 +234,9 @@ export default function PerfilScreen() {
                     {bico.profiles?.nome_completo ?? 'Contratante'} · {formatarQuando(bico.data_hora_desejada)}
                   </ThemedText>
                 </View>
-                <View style={[styles.badge, { backgroundColor: theme.statusPending }]}>
+                <View style={[styles.badge, { backgroundColor: theme[seloStatusBico(bico.status).cor] }]}>
                   <ThemedText type="small" themeColor="background" style={styles.badgeText}>
-                    A PAGAR
+                    {seloStatusBico(bico.status).texto}
                   </ThemedText>
                 </View>
               </Pressable>

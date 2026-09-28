@@ -4,6 +4,70 @@ import { ThemeColor } from '@/constants/theme';
 // (feed, busca, detalhe, perfil). Não fazem chamada de rede — só transformam
 // dados que as telas já buscaram.
 
+// Estados do bico (migration 0019, docs/JOB_LIFECYCLE_DESIGN.md).
+export type StatusBico =
+  | 'aberto'
+  | 'atribuido'
+  | 'em_andamento'
+  | 'aguardando_confirmacao'
+  | 'concluido'
+  | 'cancelado'
+  | 'em_disputa';
+
+// Já tem prestador e ainda não terminou: é o que as telas chamam de "ativo"
+// ou "em andamento" (antes da Fase 2 só existia o em_andamento).
+export const STATUS_ATIVOS: StatusBico[] = ['atribuido', 'em_andamento', 'aguardando_confirmacao', 'em_disputa'];
+
+export function bicoAtivo(status: StatusBico) {
+  return STATUS_ATIVOS.includes(status);
+}
+
+export function labelStatusBico(status: StatusBico) {
+  switch (status) {
+    case 'aberto':
+      return 'Aguardando candidatos';
+    case 'atribuido':
+      return 'Prestador escolhido';
+    case 'em_andamento':
+      return 'Em andamento';
+    case 'aguardando_confirmacao':
+      return 'Aguardando confirmação';
+    case 'em_disputa':
+      return 'Em disputa';
+    case 'concluido':
+      return 'Concluído';
+    case 'cancelado':
+      return 'Cancelado';
+  }
+}
+
+// Selo curto dos cards (perfil, histórico).
+export function seloStatusBico(status: StatusBico): { texto: string; cor: ThemeColor } {
+  switch (status) {
+    case 'aberto':
+      return { texto: 'ABERTO', cor: 'primary' };
+    case 'atribuido':
+      return { texto: 'A INICIAR', cor: 'statusPending' };
+    case 'em_andamento':
+      return { texto: 'EM ANDAMENTO', cor: 'statusPending' };
+    case 'aguardando_confirmacao':
+      return { texto: 'A CONFIRMAR', cor: 'statusPending' };
+    case 'em_disputa':
+      return { texto: 'EM DISPUTA', cor: 'statusDanger' };
+    case 'concluido':
+      return { texto: '✓ PAGO', cor: 'statusSuccess' };
+    case 'cancelado':
+      return { texto: 'CANCELADO', cor: 'textSecondary' };
+  }
+}
+
+// Mesmo prazo de public.prazo_avaliacao() (14 dias depois da conclusão). O
+// banco é quem decide; isto só evita mostrar um botão que vai dar erro.
+export function prazoDeAvaliacaoAberto(concluidoEm: string | null) {
+  if (!concluidoEm) return false;
+  return Date.now() < new Date(concluidoEm).getTime() + 14 * 24 * 60 * 60 * 1000;
+}
+
 export function iniciais(nome: string | null) {
   if (!nome) return '?';
   const partes = nome.trim().split(/\s+/);

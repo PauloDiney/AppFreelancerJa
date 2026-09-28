@@ -45,7 +45,7 @@
     "ios": "expo start --ios",
     "web": "expo start --web",
     "lint": "expo lint",
-    "test": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test src/services/armazenamento-sessao.test.ts supabase/functions/enviar-push/validacao.test.ts",
+    "test": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test src/services/armazenamento-sessao.test.ts src/utils/erros.test.ts supabase/functions/enviar-push/validacao.test.ts",
     "test:db": "supabase test db"
   },
   "private": true

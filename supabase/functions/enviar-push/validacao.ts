@@ -9,12 +9,28 @@ export const TAMANHO_MAX_CORPO = 300;
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-// Só os dois formatos que os triggers da 0017 montam e que o app sabe abrir
-// (use-push-token.ts). Qualquer outra coisa vira {}: o toque na notificação
-// não navega pra lugar nenhum em vez de navegar pra onde o pedido mandar.
+// Só os formatos que o banco monta e que o app sabe abrir (use-push-token.ts):
+// mensagem → conversa; qualquer aviso do ciclo de vida (0019, e o
+// "candidatura" antigo da 0017) → bico. Qualquer outra coisa vira {}: o toque
+// na notificação não navega pra lugar nenhum em vez de navegar pra onde o
+// pedido mandar.
+export const TIPOS_DO_BICO = new Set([
+  'candidatura',
+  'candidatura_recebida',
+  'candidatura_aceita',
+  'candidatura_recusada',
+  'bico_iniciado',
+  'bico_finalizado',
+  'bico_concluido',
+  'bico_cancelado',
+  'disputa_aberta',
+  'disputa_resolvida',
+  'avaliacao_recebida',
+]);
+
 export type DadosPush =
   | { tipo: 'mensagem'; conversa_id: string }
-  | { tipo: 'candidatura'; bico_id: string }
+  | { tipo: string; bico_id: string }
   | Record<string, never>;
 
 export type PedidoPush = {
@@ -54,8 +70,13 @@ function dadosPermitidos(valor: unknown): DadosPush {
   if (dados.tipo === 'mensagem' && typeof dados.conversa_id === 'string' && UUID.test(dados.conversa_id)) {
     return { tipo: 'mensagem', conversa_id: dados.conversa_id };
   }
-  if (dados.tipo === 'candidatura' && typeof dados.bico_id === 'string' && UUID.test(dados.bico_id)) {
-    return { tipo: 'candidatura', bico_id: dados.bico_id };
+  if (
+    typeof dados.tipo === 'string' &&
+    TIPOS_DO_BICO.has(dados.tipo) &&
+    typeof dados.bico_id === 'string' &&
+    UUID.test(dados.bico_id)
+  ) {
+    return { tipo: dados.tipo, bico_id: dados.bico_id };
   }
   return {};
 }
